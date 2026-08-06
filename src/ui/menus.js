@@ -1798,10 +1798,21 @@ export class Menus {
     } else {
       if (hasSave) opts.push(['Продолжить', () => this.game.continueGame()]);
       opts.push([hasSave ? 'Новая игра' : 'Начать путь', () => this.game.newGame()]);
-      opts.push([net.online ? 'В общем городе' : 'В общий город', () => {
-        if (net.online) this.game.goOffline();
-        else this.game.goOnline().then((r) => { if (r !== 'online') this.game.toast(String(r), UI.danger); });
-      }]);
+      // Кнопки общего города нет там, где нет комнаты.
+      //
+      // Игру можно раздать как чистую статику — и она честно работает
+      // одиночной: клиент это предусматривает. Но токен в таком случае не
+      // выдаёт никто, а без токена в комнату не войти. Раньше кнопка всё равно
+      // стояла и на нажатие отвечала ошибкой — для человека, пришедшего по
+      // ссылке, это выглядит как сломанная игра, а не как её устройство.
+      // Отсутствие токена у вошедшего гостя и есть признак «сервера за этой
+      // страницей нет».
+      if (getWallet().token) {
+        opts.push([net.online ? 'В общем городе' : 'В общий город', () => {
+          if (net.online) this.game.goOffline();
+          else this.game.goOnline().then((r) => { if (r !== 'online') this.game.toast(String(r), UI.danger); });
+        }]);
+      }
       opts.push(['Настройки', () => this.openSettings('title')]);
     }
 
