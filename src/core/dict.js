@@ -94,6 +94,11 @@ export const RU_EN = {
   // ───────────────────────────────── игровые сообщения (game.js)
   'ВЕЛОРИЯ': 'VELORIA',
   'вольный город · безопасная зона': 'free city · safe haven',
+  'Как играть': 'How to play',
+  'WASD или стрелки — ходить. Левая кнопка мыши — удар, Shift — рывок, Q — зелье. E — заговорить.':
+    'WASD or arrows to move. Left mouse button attacks, Shift dashes, Q drinks, E talks.',
+  'Веди пальцем по левой половине экрана — герой пойдёт туда. Кнопки справа: удар, умения, рывок, зелье.':
+    'Drag on the left half of the screen to move. The buttons on the right: attack, skills, dash, potion.',
   'Поговори с капитаном Дрейном — он даст первое задание':
     'Speak with Captain Drayne — he has your first job',
   'с возвращением, искатель': 'welcome back, seeker',

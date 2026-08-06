@@ -39,7 +39,7 @@ import { SKILLS, PASSIVES, skillDamage } from './systems/skills.js';
 import { Quests } from './systems/quests.js';
 import { runReaction, tryShatter, markDamageMult, MARKS, REACTIONS } from './systems/reactions.js';
 import { corruptionOf, corruptionEffects, corruptionName, ABYSS_START } from './systems/abyss.js';
-import { nextLesson, LESSON_BY_KEY, LESSONS } from './systems/lessons.js';
+import { nextLesson, LESSON_BY_KEY, LESSONS, LESSON_GAP } from './systems/lessons.js';
 import { toggleFullscreen, isFullscreen } from './core/screen.js';
 import { abyssUniquesFor, breachUniquesFor } from './systems/uniques.js';
 import { canAfford, craftItem, salvageYield, reforgeCost, sharpenChance, sharpenCost,
@@ -1478,13 +1478,29 @@ export class Game {
 
     // обучение: проверяем не каждый кадр — условия дешёвые, но их два десятка
     this._lessonT = (this._lessonT || 0) - dt;
+    this._lessonGap = Math.max(0, (this._lessonGap || 0) - dt);
     if (this._lessonT <= 0) {
       this._lessonT = 0.5;
-      if (!this.hud.lessons.length) {
+      // ── тишина между карточками
+      //
+      // Условие «нет карточки на экране» пропускало следующую через полсекунды
+      // после ухода прежней, то есть подсказки шли встык. Замер входа показал,
+      // чем это оборачивается для новичка: три карточки за девятнадцать секунд —
+      // руны, связка ударов, редкость, — и всё это в первом же бою, где он и так
+      // занят. Первую не дочитывают: её сменяет вторая.
+      //
+      // Пауза считается от ухода карточки, а не от её появления. Иначе игрок,
+      // закрывший подсказку раньше времени, получал бы следующую мгновенно —
+      // нетерпеливого наказывать очередью не за что.
+      if (!this.hud.lessons.length && this._lessonGap <= 0) {
         const l = nextLesson(this, this.seenLessons);
         if (l) {
           this.seenLessons[l.key] = 1;
-          this.hud.showLesson(l);
+          // Текст карточки может зависеть от того, чем играют: на телефоне
+          // рассказывать про WASD незачем. Разрешаем его здесь, чтобы дальше по
+          // дороге — в отрисовку, в перевод, в журнал — уходила обычная строка.
+          this.hud.showLesson({ ...l, body: typeof l.body === 'function' ? l.body(this) : l.body });
+          this._lessonGap = LESSON_GAP + this.hud.lessons[0].life;
           audio.play('ui', 1.2);
           this.save();
         }

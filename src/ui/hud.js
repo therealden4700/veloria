@@ -595,6 +595,7 @@ export class Hud {
   drawObjective(g, game) {
     const o = objectiveOf(game);
     this.objective = o;
+    this._objLabel = null;
     if (!o) return;
     const { w: W, h: H } = this.view;
     const cam = game.cam;
@@ -656,13 +657,42 @@ export class Hud {
     g.strokeStyle = rgba(col, 0.5);
     g.stroke();
     text(g, label, lx + lw / 2, ly + 1, { size: 8, align: 'center', bold: true, color: col });
+    // Подпись запоминает, где встала: уведомления рисуются следом и обязаны её
+    // обойти. На первом же экране новой игры они налезали друг на друга —
+    // «…даст первое задание» упиралось во «Взять: Первая кровь».
+    this._objLabel = { x: lx, y: ly, w: lw, h: 11 };
   }
 
   drawToasts(g) {
     const { w: W, h: H } = this.view;
     let y = (this.beltTop ?? H - 45) - 34;
+    // Уведомления обходят и подпись цели, и обучающую карточку.
+    //
+    // Первый заход двигал их только с подписи — и строка тут же уехала под
+    // карточку «Как играть», которая рисуется следом и накрывает собой. Обход
+    // одного препятствия, создающий второе, — не починка, поэтому считаем оба.
+    //
+    // Прямоугольник карточки вычисляем здесь, а не берём из `drawLesson`: та
+    // рисуется после нас, и её значения опоздали бы на кадр.
+    const ob = this._objLabel;
+    let card = null;
+    if (this.lessons.length) {
+      const l = this.lessons[0];
+      const pw = 190, lines = wrap(l.body, pw - 18, 9);
+      const inA = clamp(l.t / 0.28, 0, 1), outA = clamp(l.life / 0.35, 0, 1);
+      const a2 = Math.min(inA, outA);
+      card = {
+        x: Math.round(-pw + (pw + 10) * (a2 * a2 * (3 - 2 * a2))),
+        y: Math.round(H * 0.42), w: pw, h: 22 + lines.length * 11,
+      };
+    }
+    const мешает = (r, x, y, w2, h2) =>
+      r && x < r.x + r.w + 4 && x + w2 > r.x - 4 && y < r.y + r.h + 2 && y + h2 > r.y - 2;
     for (let i = this.toasts.length - 1; i >= 0; i--) {
       const t = this.toasts[i];
+      const tw = measure(t.msg, 10, true), tx = W / 2 - tw / 2;
+      if (мешает(ob, tx, y, tw, 11)) y = ob.y - 15;
+      if (мешает(card, tx, y, tw, 11)) y = card.y - 15;
       const a = clamp(t.t / 0.5, 0, 1) * clamp((t.max - t.t) / 0.18, 0, 1);
       text(g, t.msg, W / 2, y, {
         size: 10, align: 'center', color: t.color, alpha: a, bold: true, outline: 'rgba(6,4,12,0.92)',
