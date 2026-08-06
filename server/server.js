@@ -253,9 +253,58 @@ async function serveStatic(req, res) {
 // Комната по умолчанию — город: там встречаются все вошедшие и там безопасно.
 // Переменными можно поднять комнату биома: это нужно проверкам, которым не на
 // ком мерить бой в городе, и пригодится, когда отряды пойдут в зоны.
-const room = new Room('veloria-1', process.env.ROOM_BIOME
-  ? { kind: 'biome', id: process.env.ROOM_BIOME, seed: Number(process.env.ROOM_SEED || 20260805) }
-  : undefined);
+// ─────────────────────────────────────────── комнаты
+//
+// Комната была одна и навсегда город. Это и держало кооп в городе: считать бой
+// сервер научился, а места, где есть с кем драться, у него не было.
+//
+// Теперь комнат сколько нужно. Город один на всех — там встречаются, — а на
+// каждый биом заводится своя, и живёт она, пока в ней кто-то есть. Пустая
+// комната считает врагов впустую, поэтому её сносим: зона в памяти стоит
+// около мегабайта, и десяток брошенных — уже заметно.
+//
+// Ключ комнаты — вид и место. Отряды на общей карте появятся, когда будут
+// правила коопа; пока в биом попадают все, кто туда пошёл, и это ровно то, что
+// нужно проверить первым.
+
+const rooms = new Map();
+const ГОРОД = 'city';
+
+function roomKey(dest) {
+  if (!dest || dest.kind === 'city') return ГОРОД;
+  if (dest.kind === 'biome') return 'biome:' + String(dest.id || 'forest');
+  if (dest.kind === 'dungeon') return 'dungeon:' + (dest.floor | 0);
+  return ГОРОД;
+}
+
+function roomFor(dest) {
+  const key = roomKey(dest);
+  let r = rooms.get(key);
+  if (r) return r;
+  const opts = key === ГОРОД ? { kind: 'city', seed: 20260805 }
+    : key.startsWith('biome:') ? { kind: 'biome', id: key.slice(6), seed: 20260805 }
+    : { kind: 'dungeon', floor: Number(key.slice(8)) || 1, seed: 20260805 };
+  r = new Room(key, opts);
+  rooms.set(key, r);
+  console.log(`комната открыта: ${key} (${r.world.describe().name}, врагов ${r.world.describe().enemies})`);
+  return r;
+}
+
+/** Убрать опустевшие комнаты, кроме города: он ждёт всегда. */
+function sweepRooms() {
+  for (const [key, r] of rooms) {
+    if (key === ГОРОД || r.size) continue;
+    rooms.delete(key);
+    console.log(`комната закрыта: ${key}`);
+  }
+}
+
+// Город поднимается сразу: в него приходят все и он не должен ждать первого.
+// Переменной можно вместо этого поднять биом — так проверяют бой, в городе
+// драться не с кем.
+const room = process.env.ROOM_BIOME
+  ? roomFor({ kind: 'biome', id: process.env.ROOM_BIOME })
+  : roomFor({ kind: 'city' });
 
 openDb();
 
@@ -272,8 +321,13 @@ const http = createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
       ok: true, uptime: Math.round((Date.now() - room.startedAt) / 1000),
-      players: room.size, tick: room.tick, stats: room.stats,
+      players: [...rooms.values()].reduce((n, r) => n + r.size, 0),
+      tick: room.tick, stats: room.stats,
       world: room.world.describe(),
+      rooms: [...rooms.values()].map((r) => ({
+        id: r.id, players: r.size, tick: r.tick,
+        world: r.world.describe().name, enemies: r.world.describe().enemies,
+      })),
       auth: authStats(), db: dbStats(),
       rss: Math.round(process.memoryUsage().rss / 1048576),
     }));
@@ -284,6 +338,22 @@ const http = createServer(async (req, res) => {
 
 attachWebSocket(http, (conn) => {
   let player = null;
+  let мояКомната = null;
+  let привет = null;
+
+  // Переезд между комнатами — это выход из одной и вход в другую тем же
+  // соединением. Персонаж при этом собирается заново из того же сохранения:
+  // комната не пересылает его другой комнате, потому что источник правды —
+  // база, а не соседняя комната.
+  const переехать = (dest) => {
+    const цель = roomFor(dest);
+    if (цель === мояКомната) return;
+    if (player && мояКомната) мояКомната.remove(conn.id);
+    мояКомната = цель;
+    player = цель.add(conn, привет);
+    sweepRooms();
+  };
+
   conn.onmessage = (data) => {
     let msg;
     try { msg = JSON.parse(data); } catch { conn.close(1003, 'не JSON'); return; }
@@ -292,23 +362,29 @@ attachWebSocket(http, (conn) => {
       // токен обязателен: без него непонятно, чей это персонаж
       const sess = readSession(msg.token);
       if (!sess) { conn.close(1008, 'нужен токен входа'); return; }
-      player = room.add(conn, { ...msg, session: sess });
+      привет = { ...msg, session: sess };
+      переехать(msg.at || { kind: 'city' });
       return;
     }
-    room.onMessage(player, msg);
+    if (msg.t === 'travel') { переехать(msg.at || { kind: 'city' }); return; }
+    мояКомната.onMessage(player, msg);
   };
-  conn.onclose = () => { if (player) room.remove(conn.id); };
+  conn.onclose = () => { if (player && мояКомната) { мояКомната.remove(conn.id); sweepRooms(); } };
   conn.onerror = () => { /* обрыв — обычное дело, закрытие придёт следом */ };
 });
 
 // такт комнаты
 const timer = setInterval(() => {
-  try { room.step(); } catch (e) { console.error('сбой такта:', e); }
+  // Такт идёт по всем открытым комнатам: пустых среди них не бывает дольше
+  // одного переезда, их сносит `sweepRooms`.
+  for (const r of rooms.values()) {
+    try { r.step(); } catch (e) { console.error(`сбой такта в ${r.id}:`, e); }
+  }
 }, TICK_MS);
 
 // сердцебиение: ping всем, чтобы обрывы обнаруживались быстрее таймаута
 const beat = setInterval(() => {
-  for (const p of room.players.values()) p.conn.ping();
+  for (const r of rooms.values()) for (const p of r.players.values()) p.conn.ping();
 }, PING_MS);
 
 http.listen(PORT, () => {
@@ -319,7 +395,7 @@ http.listen(PORT, () => {
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     clearInterval(timer); clearInterval(beat);
-    for (const p of room.players.values()) { try { p.conn.close(1001, 'сервер остановлен'); } catch { /* всё равно уходим */ } }
+    for (const r of rooms.values()) for (const p of r.players.values()) { try { p.conn.close(1001, 'сервер остановлен'); } catch { /* всё равно уходим */ } }
     http.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 500);
   });
