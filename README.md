@@ -1,7 +1,103 @@
-# Veloria
+<div align="center">
 
-**Разработка [therealden4700](https://github.com/therealden4700).**
+# VELORIA
 
+### No engine. No assets. No build step.
+
+**A 2D pixel-art ARPG that forges itself at load —
+every sprite, every shadow, every note of music written in code.**
+
+*by [therealden4700](https://github.com/therealden4700)*
+
+</div>
+
+![The Breach Heart](shots/veloria-breach-heart.png)
+
+> **The Breach Heart** — the act three boss. The rings on the ground are void
+> vents: you cannot fight inside one, you can cross it, and a dash carries you
+> through for free.
+
+| | |
+|---|---|
+| ![The Molten Colossus](shots/veloria-colossus.png) | ![Warden of the Frost](shots/veloria-frost-warden.png) |
+| **The Molten Colossus** · The Smoldering Waste | **Warden of the Frost** · The Frozen Ridge |
+
+---
+
+## What it is
+
+A full action RPG that runs in a browser tab. A hub city, **five biomes** with
+their own bosses, an **endless dungeon** that gets more hostile the deeper you
+go, **three acts** of story to level 52, guild contracts, a forge, elemental
+reactions, skill runes, set bonuses and legendary properties that change how you
+play rather than how much you hit for.
+
+## What makes it unusual
+
+**Nothing is imported.** There is no engine, no sprite sheet, no audio file, no
+font file, no npm install and no build step. Every tile, monster, item icon,
+letter, sound effect and piece of music is **generated in code while the game
+loads** — from a handful of colour ramps and parameters. The whole project has
+exactly one external asset: `assets/title.png`, the title screen.
+
+That is not a stunt. A monster is a line of configuration, so adding one costs a
+line. A biome is a palette plus a list, so a new one is an afternoon. The whole
+game is 480×270 pixels upscaled with hard edges, with a second canvas on top
+carrying the interface at native resolution — pixels stay square, text stays
+sharp.
+
+**Every number is proved, not guessed.** In `tools/` there are headless stands
+that import the real game and run the real rules with no screen: combat, loot,
+zones, the descent, saves, and a long soak run that plays the game to itself.
+They do not simulate the rules — they *are* the rules, shared with the game
+through `src/systems/`. When a weapon drifts, a boss turns into a sponge or a
+build becomes a trap, the stand says so with a number.
+
+Five separate times this project a finding turned out to be in the measuring
+apparatus rather than in the game. Each of those is written down too.
+
+## Run it
+
+```bash
+node server/server.js
+```
+
+Then open <http://localhost:8123>. **Node 22.5 or newer** and nothing else —
+there is nothing to install, but the server stores characters through the
+built-in `node:sqlite`, which older releases do not have. One process serves the
+files, runs the co-op room and keeps the save; the database creates itself on
+first launch.
+
+For single player alone, any static server will do (`python3 serve.py` is
+included, and it needs no Node at all). It will not run from `file://` — the
+game is built on ES modules.
+
+**Controls.** `WASD` to move, `LMB` or `Space` to attack, `RMB` and `F`/`R`/`G`
+for skills, `Shift` to dash, `Q` for a potion, `E` to interact. `I` inventory,
+`C` character, `U` quests, `M` map, `Esc` menu, `F3` frame profiler.
+
+## What's in the box
+
+| | |
+|---|---|
+| **Biomes** | Emerald Forest · Ashen Mire · Frozen Ridge · Smoldering Waste · The Breach |
+| **Endgame** | an endless dungeon where depth adds corruption, not just bigger numbers |
+| **Story** | three acts, 34 quests, levels 1 → 52 |
+| **Combat** | light/heavy combos, shields you must flank, dodges you must break, terrain that hurts |
+| **Elements** | four marks that react with each other — corrosion, conduction, steam, shatter |
+| **Gear** | rarities, affixes, set bonuses, 22 legendary properties, skill runes you fuse |
+| **Forge** | crafting, reforging, salvage, and sharpening that can destroy the weapon |
+| **Languages** | Russian and English, switchable in settings |
+| **Multiplayer** | a room server on Node built-ins; the server simulates, the client predicts |
+
+## The README below is a work journal
+
+Everything under here is in Russian and it is not documentation — it is the
+record of the work: what was measured, what it showed, what was built as a
+result and why it was built that way. Including the mistakes, kept in place
+because the reasoning is the point.
+
+---
 
 2D-пиксельная ARPG в браузере: город-хаб, пять биомов, бесконечное подземелье,
 квесты, лут, прокачка. Вся графика, звук и музыка генерируются кодом при
@@ -16,16 +112,6 @@
 Если файл пропадёт, титульный экран нарисует прежний фон со звёздами и силуэтом
 города — игра не должна падать из-за картинки.
 
-![Сердце Пролома](shots/veloria-breach-heart.png)
-
-*Бой с Сердцем Пролома — босс третьего акта. Кольца на земле — выбросы пустоты:
-стоять в них нельзя, пересечь можно, на рывке — бесплатно.*
-
-| | |
-|---|---|
-| ![Расплавленный Колосс](shots/veloria-colossus.png) | ![Хранитель Стужи](shots/veloria-frost-warden.png) |
-| Расплавленный Колосс, Тлеющая пустошь | Хранитель Стужи, Мёрзлый кряж |
-
 ## Запуск
 
 ```bash
@@ -34,9 +120,11 @@ node server/server.js
 
 Открыть http://localhost:8123. Порт задаётся переменной: `PORT=9000 node server/server.js`.
 
-Нужен Node 20 или новее — и больше ничего: зависимостей у проекта нет, сервер
-собран на встроенных модулях `node:`. Он же раздаёт файлы, держит комнату для
-совместной игры и хранит персонажей. База создаётся сама при первом запуске.
+Нужен **Node 22.5 или новее** — и больше ничего: зависимостей у проекта нет,
+сервер собран на встроенных модулях `node:`. Граница именно такая из-за
+`node:sqlite`, на котором лежит хранилище персонажей: в более старых выпусках
+его просто нет. Сервер же раздаёт файлы и держит комнату для совместной игры.
+База создаётся сама при первом запуске.
 
 Если нужна только одиночная игра, хватит любого статического сервера — в
 комплекте лежит `python3 serve.py`. С `file://` не заработает: игра собрана на
