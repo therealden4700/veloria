@@ -33,6 +33,12 @@ class Input {
     this.mouse = { x: 0, y: 0, wx: 0, wy: 0, down: false, justDown: false, justUp: false, wheel: 0, right: false, rightJustDown: false };
     this.anyKey = false;
     this._el = null;
+    // Стик с касаний. Клавиатура даёт восемь направлений, палец — любое, и
+    // сводить его обратно к восьми значит выбрасывать то, что человек уже
+    // показал. Поэтому ось аналоговая, а `axis()` предпочитает её, когда палец
+    // на экране.
+    this.stick = { x: 0, y: 0, active: false };
+    this.touch = false;          // хоть раз касались — значит, играют пальцем
   }
 
   attach(canvas, view) {
@@ -94,6 +100,7 @@ class Input {
   }
 
   axis() {
+    if (this.stick.active) return { x: this.stick.x, y: this.stick.y };
     let x = 0, y = 0;
     if (this.held('left')) x -= 1;
     if (this.held('right')) x += 1;
@@ -102,6 +109,10 @@ class Input {
     if (x && y) { const k = Math.SQRT1_2; x *= k; y *= k; }
     return { x, y };
   }
+
+  /** Действие от экранной кнопки — тем же путём, что и от клавиши. */
+  press(a) { this.down.add(a); this.justPressed.add(a); this.anyKey = true; }
+  release(a) { if (this.down.delete(a)) this.justReleased.add(a); }
 
   endFrame() {
     this.justPressed.clear();

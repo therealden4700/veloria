@@ -9,6 +9,7 @@ import { Game } from './game.js';
 import { profiler } from './core/profiler.js';
 import { attachScreen } from './core/screen.js';
 import { attachStage } from './ui/stage.js';
+import { attachTouch } from './core/touch.js';
 import { restoreWallet } from './core/wallet.js';
 
 const VIEW = { w: 480, h: 270 };
@@ -70,6 +71,11 @@ async function bootstrap() {
 
   game = new Game(ctx, VIEW, uictx);
   window.__veloria = game;
+
+  // Управление с касаний подключается само, если устройство сенсорное: на
+  // настольном слой не создаётся вовсе и ничего не стоит. Ставим после
+  // создания игры — слою нужны и пояс HUD, и меню, чтобы знать, когда молчать.
+  attachTouch(canvas, input, game);
 
   bootTip.textContent = 'разворачиваем карту…';
   await art;

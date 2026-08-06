@@ -72,6 +72,7 @@ export class Hud {
     const boss = game.enemies.find((e) => e.boss && !e.dead && e.aggro);
     this.drawVitals(g, p, game);
     this.drawSkills(g, p, game);
+    this.drawStick(g, game);
     if (!boss) this.drawQuestTracker(g, game);
     if (this.minimapOn) this.drawMinimap(g, game);
     if (boss) this.drawBossBar(g, boss);
@@ -149,11 +150,34 @@ export class Hud {
     }
   }
 
+  /**
+   * Кольцо стика под пальцем.
+   *
+   * Без него палец не знает, где начало отсчёта: стик появляется там, где его
+   * поставили, и невидимый центр превращает точное движение в угадывание.
+   * Рисуем только пока держат — в остальное время экран телефона и так тесный.
+   */
+  drawStick(g, game) {
+    const inp = game.input;
+    if (!inp || !inp.stick.active) return;
+    const s = inp.stick;
+    const cx = s.ox ?? 44;
+    const cy = s.oy ?? (this.view.h - 52);
+    g.save();
+    g.globalAlpha = 0.5;
+    g.strokeStyle = '#cbb8ff'; g.lineWidth = 1;
+    g.beginPath(); g.arc(cx, cy, 24, 0, Math.PI * 2); g.stroke();
+    g.globalAlpha = 0.85;
+    g.fillStyle = '#e6dcff';
+    g.beginPath(); g.arc(cx + s.x * 20, cy + s.y * 20, 7, 0, Math.PI * 2); g.fill();
+    g.restore();
+  }
+
   drawSkills(g, p, game) {
     const { w: W, h: H } = this.view;
     const keys = ['F', 'R', 'G'];
     const slots = [
-      { key: 'ЛКМ', label: 'Удар', cd: p.attackCd, max: p.attackRate, icon: 'sword' },
+      { key: 'ЛКМ', label: 'Удар', cd: p.attackCd, max: p.attackRate, icon: 'sword', action: 'attack' },
     ];
     // На поясе только то, что действительно вставлено. Пустые гнёзда рун
     // занимали два места из шести и обещали умение, которого нет: до первой
@@ -172,11 +196,11 @@ export class Hud {
       slots.push({
         key: keys[i], label: r.name,
         cd: p.skillCd[i], max: (p.skillCdMax && p.skillCdMax[i]) || 1,
-        rune: r, cost: r.cost,
+        rune: r, cost: r.cost, action: 'skill' + (i + 1),
       });
     }
-    slots.push({ key: 'ПКМ', label: 'Рывок', cd: p.dashCd, max: p.dashCooldown, icon: 'dash' });
-    slots.push({ key: 'Q', label: 'Зелье', cd: 0, max: 1, icon: 'potion', count: game.potionCount() });
+    slots.push({ key: 'ПКМ', label: 'Рывок', cd: p.dashCd, max: p.dashCooldown, icon: 'dash', action: 'dash' });
+    slots.push({ key: 'Q', label: 'Зелье', cd: 0, max: 1, icon: 'potion', count: game.potionCount(), action: 'potion' });
     // Клавиша переехала с подписи под слотом в уголок самого слота, а на
     // остывающем умении показывается остаток в секундах. Подпись снизу была
     // придумана под пиксельный шрифт: кегль 7 читался только потому, что каждый
@@ -242,9 +266,17 @@ export class Hud {
       goldRule(g, px + 8, gy + GS + 2, pw - 16, 0.45);
     }
 
+    // Пояс сообщает, где нарисовал гнёзда.
+    //
+    // Управление с касаний бьёт по этим же прямоугольникам, а не по своим.
+    // Второй набор координат разъехался бы с первой же правкой вёрстки, и
+    // кнопка оказалась бы не там, где её видно, — а на телефоне это и есть
+    // «игра не слушается».
+    this.touchSlots = [];
     for (const s of slots) {
       const cooling = s.cd > 0 && s.max > 0;
       const noMana = s.cost && p.mp < s.cost;
+      if (s.action) this.touchSlots.push({ x, y, w: size, h: size, action: s.action });
 
       // гнездо: градиент снизу вверх — так оно выглядит утопленным, а не
       // наклеенным поверх подложки
