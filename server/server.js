@@ -108,6 +108,11 @@ class Room {
         // Иначе игрок мог бы прислать координату посреди стены.
         this.world.applyInput(p.pid, msg);
         break;
+      case 'swing':
+        // То же правило, что и с движением: приходит «махнул», а не «попал по
+        // такому-то на столько-то». Кого задело, решает комната.
+        this.world.swing(p.pid, msg);
+        break;
       case 'ping':
         this.sendTo(p, { t: 'pong', c: msg.c, now: Date.now() });
         break;
@@ -128,7 +133,10 @@ class Room {
     }
     if (!this.players.size) return;
     const s = this.world.snapshot();
-    this.broadcast({ t: 'snap', tick: this.tick, now, players: s.players, enemies: s.enemies });
+    // `ev` — что случилось за такт: попадания, промахи, смерти. Клиент играет
+    // по ним зрелище. Раньше рассылка перечисляла поля поимённо и новое просто
+    // не доехало: снимок его нёс, а до клиента он не добирался.
+    this.broadcast({ t: 'snap', tick: this.tick, now, players: s.players, enemies: s.enemies, ev: s.ev });
   }
 
   sendTo(p, obj) {
@@ -242,7 +250,12 @@ async function serveStatic(req, res) {
 
 // ─────────────────────────────────────────── запуск
 
-const room = new Room('veloria-1');
+// Комната по умолчанию — город: там встречаются все вошедшие и там безопасно.
+// Переменными можно поднять комнату биома: это нужно проверкам, которым не на
+// ком мерить бой в городе, и пригодится, когда отряды пойдут в зоны.
+const room = new Room('veloria-1', process.env.ROOM_BIOME
+  ? { kind: 'biome', id: process.env.ROOM_BIOME, seed: Number(process.env.ROOM_SEED || 20260805) }
+  : undefined);
 
 openDb();
 

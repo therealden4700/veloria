@@ -22,6 +22,9 @@ const { Enemy } = await import('../src/entities/enemies.js');
 const collide = await import('../src/world/collide.js');
 const { Player } = await import('../src/entities/player.js');
 const { reviveItem } = await import('../src/systems/items.js');
+const { swingHits, resolveHit } = await import('../src/systems/combat.js');
+const { markDamageMult } = await import('../src/systems/reactions.js');
+const { angle } = await import('../src/core/util.js');
 
 let baked = false;
 /** Запечь графику один раз: без неё генератор не знает габаритов реквизита. */
@@ -62,6 +65,9 @@ export class World {
     this.players = new Map();      // pid → сущность
     this.enemies = [];
     this.projectiles = [];
+    // Что случилось за такт: попадания, промахи, смерти. Клиент по ним играет
+    // зрелище — искры и числа, — а решает всё равно сервер.
+    this.events = [];
 
     // пустышки для эффектов: врагам они нужны, серверу — нет
     this.particles = NULL_FX;
@@ -84,8 +90,66 @@ export class World {
   nearestEnemy(x, y, r) { return collide.nearestEnemy(this.enemies, x, y, r); }
   moveEntity(e, dt, c = true) { collide.moveEntity(this.zone, e, dt, c); }
   canBeAt(x, y, w, h, fly) { return collide.canBeAt(this.zone, x, y, w, h, fly); }
-  damageEnemy() { /* бой переедет сюда следующим шагом */ }
-  killEnemy() {}
+  /**
+   * Урон по врагу — теперь по-настоящему, и по тем же правилам.
+   *
+   * Здесь нет второй боевой системы: сколько дойдёт до цели, считает
+   * `resolveHit` из `systems/combat.js` — та же функция, что у клиента и у
+   * стендов. Расходятся не правила, расходятся копии; копии здесь нет.
+   *
+   * Осталось только последствие: здоровье, ярость, отбрасывание, смерть.
+   * Зрелище — числа, искры, звук — на сервере некому смотреть, и его нет.
+   */
+  damageEnemy(e, amount, opts = {}) {
+    if (!e || e.dead) return 0;
+    const atk = opts.by || this.player;
+    const hit = resolveHit(atk, e, amount, opts, Math.random, markDamageMult);
+    if (hit.dodged) { this.events.push({ t: 'dodge', i: this.enemies.indexOf(e) }); return 0; }
+    if (hit.blocked) { e.blockT = 0.22; opts.knock = (opts.knock || 0) * 0.15; }
+
+    const dmg = hit.dmg;
+    e.hp -= dmg;
+    e.hurtT = 0.16;
+    if (!e.aggro) { e.aggro = true; e.wakePack(this); }
+    if (atk && atk.stats) atk.stats.dmgDealt += dmg;
+
+    if (opts.knock && opts.from) {
+      const a = angle(opts.from.x, opts.from.y, e.x, e.y);
+      e.vx += Math.cos(a) * opts.knock * (e.knockRes || 1);
+      e.vy += Math.sin(a) * opts.knock * (e.knockRes || 1);
+    }
+
+    // Оружейные метки и вампиризм — тоже правила, а не украшение: от них
+    // зависит, сколько врагу жить. Считаем их здесь же.
+    if (atk && !opts.silent) {
+      const g = atk.gear || {};
+      const ls = atk.lifesteal || 0;
+      if (ls) { const h = dmg * ls / 100; if (h >= 0.5) atk.heal(h); }
+      if (g.burn) e.applyEffect('burn', 3, g.burn * 0.5, this);
+      if (g.poison) e.applyEffect('poison', 4, g.poison * 0.5, this);
+      if (g.slow) e.applyEffect('slow', 2.5, 1, this);
+    }
+
+    this.events.push({ t: 'hit', i: this.enemies.indexOf(e), d: dmg, c: !!opts.crit, b: hit.blocked });
+    if (e.hp <= 0) this.killEnemy(e, atk);
+    return dmg;
+  }
+
+  killEnemy(e, by) {
+    if (e.dead) return;
+    e.dead = true; e.deadT = 0; e.hp = 0;
+    const p = by || this.player;
+    if (p) {
+      p.kills = (p.kills || 0) + 1;
+      if (e.boss && p.stats) p.stats.bossKills++;
+      // Опыт начисляет сервер: до сих пор его считал клиент и присылал слепком.
+      // Уровень — это доступ к биомам и множитель на всё, и верить в нём на
+      // слово нельзя.
+      if (p.gainXp) p.gainXp(e.xpValue || 0, this);
+    }
+    this.events.push({ t: 'kill', i: this.enemies.indexOf(e), by: p ? p.pid : null });
+  }
+
   summonAdds() {}
   shockwave() {}
 
@@ -204,6 +268,35 @@ export class World {
     return best;
   }
 
+  /**
+   * Взмах игрока. Клиент присылает намерение, попадания считает сервер.
+   *
+   * До сих пор клиент решал сам, кого задело и на сколько, а серверу присылал
+   * готовый слепок героя. Это и значило «сейф, а не источник правды»: подделать
+   * можно было всё — урон, добычу, уровень. Теперь клиент говорит только
+   * «махнул, вот куда смотрю и какой это удар в связке», а `swingHits` —
+   * та же функция, что рисует дугу у клиента, — отвечает, кого достало.
+   *
+   * Откат проверяем здесь же: без него связку можно слать хоть каждый кадр.
+   */
+  swing(pid, msg) {
+    const p = this.players.get(pid);
+    if (!p || p.dead) return;
+    if (this.time < (p._swingUntil || 0)) return;       // ещё не отмахнулся
+    p._swingUntil = this.time + Math.max(0.08, p.attackRate * 0.92);
+
+    if (Number.isFinite(msg.f)) p.facing = msg.f;
+    const combo = Math.max(0, Math.min(2, msg.combo | 0));
+    this.player = p;                                    // ИИ и правила смотрят сюда
+    const hits = swingHits(p, this.enemies, { combo, time: this.time });
+    for (const h of hits) {
+      this.damageEnemy(h.enemy, h.dmg, {
+        crit: h.crit, knock: h.knock, from: p, heavy: h.heavy, by: p,
+      });
+    }
+    this.events.push({ t: 'swing', pid, combo, f: +p.facing.toFixed(2), n: hits.length });
+  }
+
   /** Снимок для рассылки. Пока JSON и целиком — ужмём, когда станет тесно. */
   snapshot() {
     return {
@@ -217,10 +310,14 @@ export class World {
         f: +p.facing.toFixed(2), hp: Math.round(p.hp), mhp: p.maxHp,
         lvl: p.level, seq: p.seq, look: p.look,
       })),
-      enemies: this.enemies.filter((e) => !e.dead).map((e, i) => ({
+      // Индекс врага — его место в общем списке, а не в отфильтрованном:
+      // события ссылаются именно на него, и после первой же смерти нумерация
+      // отфильтрованного списка разъехалась бы с ними.
+      enemies: this.enemies.map((e, i) => (e.dead ? null : ({
         i, k: e.key, x: Math.round(e.x), y: Math.round(e.y),
         hp: Math.round(e.hp), mx: Math.round(e.maxHp),
-      })),
+      }))).filter(Boolean),
+      ev: this.events.splice(0, this.events.length),
     };
   }
 
