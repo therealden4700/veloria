@@ -1,0 +1,233 @@
+// Мир комнаты: то, что сервер считает сам.
+//
+// Ключевая мысль всей затеи: здесь нет второго движка. Зона строится тем же
+// генератором, что у клиента, враги — те же `Enemy`, столкновения — тот же
+// `world/collide.js`. Разойтись правилам негде, потому что правило одно.
+//
+// Врагам от «игры» нужен объект с десятком полей и методов — тот самый, что был
+// набросан заглушкой в проверке безголовой сборки. Здесь он доведён до
+// настоящего. Эффектам (частицы, тряска, всплывающие числа) на сервере делать
+// нечего: они пустышки, потому что никто не смотрит.
+
+import { installHeadless } from '../src/core/headless.js';
+
+installHeadless();
+
+const { initProps } = await import('../src/art/props.js');
+const { bakeAllMonsters } = await import('../src/art/sprites.js');
+const { generateBiomeZone } = await import('../src/world/zone.js');
+const { generateCity } = await import('../src/world/city.js');
+const { generateDungeon } = await import('../src/world/dungeon.js');
+const { Enemy } = await import('../src/entities/enemies.js');
+const collide = await import('../src/world/collide.js');
+const { Player } = await import('../src/entities/player.js');
+const { reviveItem } = await import('../src/systems/items.js');
+
+let baked = false;
+/** Запечь графику один раз: без неё генератор не знает габаритов реквизита. */
+export function prepareArt() {
+  if (baked) return;
+  initProps();
+  bakeAllMonsters();
+  baked = true;
+}
+
+/**
+ * Сколько игрового времени игрок может держать «про запас».
+ *
+ * Нужно, чтобы дрожание сети не резало движение: пакеты приходят неровно, и без
+ * запаса герой спотыкался бы на каждой задержке. Больше четверти секунды копить
+ * нельзя — иначе накопленное превращается в рывок вперёд.
+ */
+const BUDGET_CAP = 0.25;
+
+const NOOP = () => {};
+const NULL_FX = { add: NOOP, burst: NOOP, ring: NOOP, spawn: NOOP, update: NOOP };
+
+
+
+export class World {
+  constructor(opts = {}) {
+    prepareArt();
+    this.kind = opts.kind || 'city';
+    this.biomeId = opts.id || null;
+    this.floor = opts.floor || 1;
+    this.seed = opts.seed >>> 0 || 1;
+
+    this.zone = this.kind === 'city' ? generateCity(this.seed ^ 0x51ed)
+      : this.kind === 'dungeon' ? generateDungeon(this.floor, this.seed ^ (this.floor * 977))
+      : generateBiomeZone(this.biomeId, this.seed ^ 0x2a1d);
+
+    this.time = 0;
+    this.players = new Map();      // pid → сущность
+    this.enemies = [];
+    this.projectiles = [];
+
+    // пустышки для эффектов: врагам они нужны, серверу — нет
+    this.particles = NULL_FX;
+    this.floats = NULL_FX;
+    this.shake = { add: NOOP, update: NOOP };
+
+    for (const s of this.zone.spawns) this.enemies.push(new Enemy(s.key, s.level, s.x, s.y));
+
+    // `player` — то, на кого смотрит ИИ. Врагов писали под одного героя, и
+    // читают они именно это поле. Перед ходом каждого врага сюда кладётся
+    // ближайший к нему живой игрок: так старый ИИ работает с любым числом
+    // игроков без единой правки. Заменить на честный выбор цели — отдельная
+    // задача про правила коопа.
+    this.player = null;
+  }
+
+  // ── то, чем пользуется ИИ врагов
+  solidAt(x, y) { return collide.solidAt(this.zone, x, y); }
+  hasLineOfSight(a, b) { return collide.hasLineOfSight(this.zone, a, b); }
+  nearestEnemy(x, y, r) { return collide.nearestEnemy(this.enemies, x, y, r); }
+  moveEntity(e, dt, c = true) { collide.moveEntity(this.zone, e, dt, c); }
+  canBeAt(x, y, w, h, fly) { return collide.canBeAt(this.zone, x, y, w, h, fly); }
+  damageEnemy() { /* бой переедет сюда следующим шагом */ }
+  killEnemy() {}
+  summonAdds() {}
+  shockwave() {}
+
+  // ── игроки
+  /**
+   * Игрок в комнате — настоящий `Player`, а не выдуманная запись.
+   *
+   * Раньше здесь лежала заглушка с зашитой скоростью 64.25 и сотней здоровья.
+   * Для героя 35-го уровня в сапогах на ловкость это уже неправда, и сверка
+   * предсказания срабатывала на трети вводов: клиент двигал героя своей
+   * физикой, сервер — выдуманной. Теперь сервер собирает того же самого героя
+   * из сохранения тем же классом и тем же `fromJSON`, что и клиент.
+   */
+  addPlayer({ pid, name, address, look, character }) {
+    const sp = this.zone.spawnPoint || { x: 100, y: 100 };
+    const p = new Player(sp.x, sp.y);
+    if (character && character.player) {
+      try { p.fromJSON(character.player, reviveItem); } catch { /* битое сохранение — играем новым */ }
+    }
+    p.x = sp.x; p.y = sp.y; p.vx = 0; p.vy = 0;
+    p.dead = false;
+    p.hp = Math.max(1, Math.min(p.hp || p.maxHp, p.maxHp));
+
+    p.pid = pid; p.name = name; p.address = address;
+    p.input = { mx: 0, my: 0, f: 0 };
+    p.seq = 0;              // номер последнего учтённого ввода — для сверки
+    // внешность объявляет клиент — она косметическая, врать ей нечем
+    p.look = look || {
+      armorTier: p.equipment.armor ? p.equipment.armor.tier : 0,
+      weaponTier: p.weaponLook ? p.weaponLook() : 0,
+      weaponType: p.equipment.weapon ? p.equipment.weapon.sub : 'sword',
+      cape: p.level >= 10,
+    };
+    this.players.set(pid, p);
+    return p;
+  }
+
+  removePlayer(pid) { this.players.delete(pid); }
+
+  /**
+   * Ввод — намерение, а не положение. Клиент говорит «иду туда», сервер решает,
+   * дошёл ли. Именно поэтому здесь принимается вектор от −1 до 1, а не x и y:
+   * иначе игрок мог бы просто прислать координату посреди стены.
+   */
+  /**
+   * Ввод — список сделанных шагов, а не «где я сейчас».
+   *
+   * Клиент присылает ровно те шаги, которые проиграл сам, с их dt; сервер их
+   * повторяет. Так предсказание сходится точно: обе стороны считают одну и ту
+   * же последовательность, а не одну и ту же формулу с разным шагом.
+   *
+   * Шаги ограничены и по длине, и по суммарному времени за такт: иначе прислать
+   * «я шёл десять секунд» можно было бы каждые пятьдесят миллисекунд, и это
+   * готовый ускоритель. Сервер соглашается отыграть не больше, чем прошло на
+   * его собственных часах, с небольшим запасом на дрожание сети.
+   */
+  applyInput(pid, msg) {
+    const p = this.players.get(pid);
+    if (!p || p.dead) return;
+    if (Number.isFinite(msg.f)) p.input.f = msg.f;
+    if (Number.isFinite(msg.seq)) p.seq = msg.seq;
+
+    const steps = Array.isArray(msg.s) ? msg.s : null;
+    if (!steps || !steps.length) return;
+
+    // ── ведро времени
+    //
+    // Первая версия давала надбавку на каждое сообщение: «сколько прошло, плюс
+    // пятьдесят миллисекунд про запас». Проверка показала, что так проходит
+    // ускоритель в два с половиной раза — достаточно слать сообщения почаще, и
+    // надбавка набегает быстрее реального времени. За секунду поддельный клиент
+    // прошёл 153 пикселя вместо 64.
+    //
+    // Правильно — копить бюджет по настоящим часам и тратить из него. Сколько
+    // времени прошло, столько игры и можно отыграть; запас ограничен сверху,
+    // чтобы дрожание сети не резало движение, но и не копилось часами.
+    const now = Date.now();
+    const elapsed = Math.max(0, (now - (p.lastInputAt || now)) / 1000);
+    p.lastInputAt = now;
+    p.budget = Math.min(BUDGET_CAP, (p.budget || 0) + elapsed);
+
+    for (const st of steps.slice(0, 60)) {
+      const mx = Number(st[0]) || 0, my = Number(st[1]) || 0;
+      let dt = Number(st[2]) || 0;
+      if (!(dt > 0)) continue;
+      dt = Math.min(dt, 1 / 20);          // один шаг не длиннее пятидесяти миллисекунд
+      if (p.budget <= 0) { p.throttled = (p.throttled || 0) + 1; break; }
+      dt = Math.min(dt, p.budget);
+      p.budget -= dt;
+      collide.stepMove(this.zone, p, mx, my, p.moveSpeed, dt);
+    }
+    p.facing = p.input.f;
+  }
+
+  step(dt) {
+    this.time += dt;
+
+    // Игроков такт не двигает: они двигаются в `applyInput`, ровно теми шагами,
+    // которые проиграл клиент. Здесь остаются только враги — у них своё время.
+
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      this.player = this.nearestPlayerTo(e);
+      if (!this.player) continue;      // некому — враг стоит
+      e.update(dt, this);
+    }
+  }
+
+  nearestPlayerTo(e) {
+    let best = null, bd = Infinity;
+    for (const p of this.players.values()) {
+      if (p.dead) continue;
+      const d = (p.x - e.x) ** 2 + (p.y - e.y) ** 2;
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+  }
+
+  /** Снимок для рассылки. Пока JSON и целиком — ужмём, когда станет тесно. */
+  snapshot() {
+    return {
+      players: [...this.players.values()].map((p) => ({
+        pid: p.pid, name: p.name,
+        // Десятая доля пикселя вместо целых: округление до целого само по себе
+        // давало сверке до полутора пикселей ошибки на ровном месте — герой
+        // подёргивался, стоя неподвижно. Лишний знак в снимке дешевле дрожи.
+        x: +p.x.toFixed(1), y: +p.y.toFixed(1),
+        vx: +p.vx.toFixed(1), vy: +p.vy.toFixed(1),
+        f: +p.facing.toFixed(2), hp: Math.round(p.hp), mhp: p.maxHp,
+        lvl: p.level, seq: p.seq, look: p.look,
+      })),
+      enemies: this.enemies.filter((e) => !e.dead).map((e, i) => ({
+        i, k: e.key, x: Math.round(e.x), y: Math.round(e.y),
+        hp: Math.round(e.hp), mx: Math.round(e.maxHp),
+      })),
+    };
+  }
+
+  /** Что клиент должен знать, чтобы построить ту же зону у себя. */
+  describe() {
+    return { kind: this.kind, id: this.biomeId, floor: this.floor, seed: this.seed,
+             name: this.zone.name, w: this.zone.w, h: this.zone.h,
+             spawn: this.zone.spawnPoint, enemies: this.enemies.length };
+  }
+}

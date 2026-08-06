@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Veloria</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Мир рисуется в 480×270 и растягивается ×4 без сглаживания: так пиксель
+         остаётся ровным квадратом. Интерфейс лежит отдельным слоем поверх и
+         рисуется в настоящем разрешении экрана — оттого текст чёткий, а места
+         под панели вчетверо больше. -->
+    <div id="stack">
+      <canvas id="game" width="480" height="270"></canvas>
+      <canvas id="ui"></canvas>
+    </div>
+  </div>
+  <div id="boot">
+    <div class="logo">VELORIA</div>
+    <div class="sub">кузнь мира…</div>
+    <div class="bar"><i></i></div>
+  </div>
+  <div id="fatal" hidden></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

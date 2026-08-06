@@ -1,0 +1,117 @@
+// Клавиатура + мышь. Действия абстрагированы, чтобы раскладка не текла в игру.
+
+const MAP = {
+  up:      ['KeyW', 'ArrowUp', 'KeyЦ'],
+  down:    ['KeyS', 'ArrowDown'],
+  left:    ['KeyA', 'ArrowLeft'],
+  right:   ['KeyD', 'ArrowRight'],
+  attack:  ['Space', 'KeyJ'],
+  skill1:  ['KeyF', 'Digit1'],
+  skill2:  ['KeyR', 'Digit2'],
+  skill3:  ['KeyG', 'Digit3'],
+  dash:    ['ShiftLeft', 'ShiftRight', 'KeyL'],
+  potion:  ['KeyQ'],
+  interact:['KeyE', 'Enter'],
+  inventory: ['KeyI', 'Tab'],
+  character: ['KeyC'],
+  quests:  ['KeyU'],
+  map:     ['KeyM'],
+  pause:   ['Escape'],
+  profiler:['F3', 'Backquote'],   // профайлер кадра — F3 или тильда
+  confirm: ['Enter', 'Space'],
+  cancel:  ['Escape'],
+};
+
+const REVERSE = {};
+for (const act in MAP) for (const code of MAP[act]) (REVERSE[code] ||= []).push(act);
+
+class Input {
+  constructor() {
+    this.down = new Set();        // удерживаемые действия
+    this.justPressed = new Set(); // нажатые в этом кадре
+    this.justReleased = new Set();
+    this.mouse = { x: 0, y: 0, wx: 0, wy: 0, down: false, justDown: false, justUp: false, wheel: 0, right: false, rightJustDown: false };
+    this.anyKey = false;
+    this._el = null;
+  }
+
+  attach(canvas, view) {
+    this._el = canvas;
+    this.view = view;
+
+    addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      const acts = REVERSE[e.code];
+      if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash'].includes(e.code)) e.preventDefault();
+      this.anyKey = true;
+      if (!acts) return;
+      for (const a of acts) { this.down.add(a); this.justPressed.add(a); }
+    });
+
+    addEventListener('keyup', (e) => {
+      const acts = REVERSE[e.code];
+      if (!acts) return;
+      for (const a of acts) { this.down.delete(a); this.justReleased.add(a); }
+    });
+
+    addEventListener('blur', () => { this.down.clear(); if (this.mouse.down) this.mouse.justUp = true; this.mouse.down = false; });
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    canvas.addEventListener('mousemove', (e) => this._pos(e));
+    canvas.addEventListener('mousedown', (e) => {
+      this._pos(e);
+      this.anyKey = true;
+      if (e.button === 0) {
+        this.mouse.down = true; this.mouse.justDown = true;
+        this.down.add('attack'); this.justPressed.add('attack');
+      } else if (e.button === 2) {
+        this.mouse.right = true; this.mouse.rightJustDown = true;
+        this.down.add('dash'); this.justPressed.add('dash');
+      }
+    });
+    addEventListener('mouseup', (e) => {
+      if (e.button === 0) { this.mouse.down = false; this.mouse.justUp = true; this.down.delete('attack'); }
+      if (e.button === 2) { this.mouse.right = false; this.down.delete('dash'); }
+    });
+    canvas.addEventListener('wheel', (e) => { this.mouse.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
+  }
+
+  _pos(e) {
+    const r = this._el.getBoundingClientRect();
+    this.mouse.x = ((e.clientX - r.left) / r.width) * this.view.w;
+    this.mouse.y = ((e.clientY - r.top) / r.height) * this.view.h;
+  }
+
+  held(a) { return this.down.has(a); }
+  pressed(a) { return this.justPressed.has(a); }
+  released(a) { return this.justReleased.has(a); }
+
+  /** Считать нажатие один раз (чтобы одно и то же не сработало в двух местах). */
+  consume(a) {
+    if (this.justPressed.has(a)) { this.justPressed.delete(a); return true; }
+    return false;
+  }
+
+  axis() {
+    let x = 0, y = 0;
+    if (this.held('left')) x -= 1;
+    if (this.held('right')) x += 1;
+    if (this.held('up')) y -= 1;
+    if (this.held('down')) y += 1;
+    if (x && y) { const k = Math.SQRT1_2; x *= k; y *= k; }
+    return { x, y };
+  }
+
+  endFrame() {
+    this.justPressed.clear();
+    this.justReleased.clear();
+    this.mouse.justDown = false;
+    this.mouse.justUp = false;
+    this.mouse.rightJustDown = false;
+    this.mouse.wheel = 0;
+    this.anyKey = false;
+  }
+}
+
+export const input = new Input();

@@ -1,0 +1,151 @@
+// Обучение по мере надобности.
+//
+// Туториала в начале нет намеренно: вывалить на игрока 13 умений, четыре
+// стихийные реакции, вехи заточки и порчу Бездны в первую минуту — значит не
+// объяснить ничего. Вместо этого каждая система объясняется ровно в тот момент,
+// когда впервые становится нужной, ровно один раз, и запоминается в сохранении.
+//
+// `when(g)` вызывается раз в полсекунды; проверки должны быть дешёвыми.
+
+import { UNIQUES } from './uniques.js';
+import { MARKS } from './reactions.js';
+import { ABYSS_START } from './abyss.js';
+
+const hasGear = (p, fn) => {
+  for (const s of ['weapon', 'armor', 'helm', 'ring', 'amulet']) {
+    const it = p.equipment[s];
+    if (it && fn(it)) return true;
+  }
+  return false;
+};
+const inBag = (p, fn) => p.inventory.some(fn);
+
+/**
+ * key   — идентификатор, он же ключ памяти
+ * title — заголовок карточки
+ * body  — одна-две строки: что это, зачем и что нажать
+ * when  — условие показа
+ * tone  — цвет акцента
+ */
+export const LESSONS = [
+  {
+    key: 'combo', title: 'Связка из трёх ударов', tone: '#ffd98a',
+    body: 'Третий удар подряд бьёт тяжело: пробивает щиты и броню. Не спеши — держи ритм.',
+    when: (g) => g.player.stats.dmgDealt > 60,
+  },
+  {
+    key: 'levelup', title: 'Очки развития', tone: '#8fd8ff',
+    body: 'За уровень дают 3 очка. Вложить — у наставника в Велории, клавиша C покажет, куда они ушли.',
+    when: (g) => g.player.statPoints >= 3,
+  },
+  {
+    key: 'rune', title: 'Умения — это руны', tone: '#b08aff',
+    body: 'Руна вставляется в слот F, R или G. Оружие ни на что не влияет: набор умений — твой выбор, а не класс.',
+    // Не «есть руна в рюкзаке», а «есть руна и идёт бой». Герой начинает игру с
+    // руной, и по прежнему условию карточка выскакивала на нулевой секунде —
+    // объясняла слоты умений человеку, который ещё не сделал ни шагу. Замер
+    // показал её первой строкой хроники, до первого врага и первого удара.
+    when: (g) => g.enemies.some((e) => !e.dead && e.aggro)
+      && (g.player.equipment.skill1
+        || inBag(g.player, (i) => i.kind === 'rune' && i.runeType === 'active')),
+  },
+  {
+    key: 'passive', title: 'Пассивная руна', tone: '#b08aff',
+    body: 'Слот пассивки один. Она работает всегда и часто решает больше, чем третье активное умение.',
+    when: (g) => inBag(g.player, (i) => i.kind === 'rune' && i.runeType === 'passive'),
+  },
+  {
+    key: 'shield', title: 'Щитоносцы держат фронт', tone: '#9fc4e8',
+    body: 'Щит гасит удары спереди и доворачивается с задержкой. Заходи сбоку — или ломай третьим ударом связки.',
+    when: (g) => g.enemies.some((e) => !e.dead && e.aggro && e.def.shield),
+  },
+  {
+    key: 'mark', title: 'Стихийные метки', tone: '#ff8a3a',
+    body: 'Поджиг, яд, обморожение и разряд висят на враге значками. Две метки вместе дают реакцию — схема во вкладке «Стихии».',
+    when: (g) => g.enemies.some((e) => !e.dead && Object.keys(MARKS).some((k) => (e.effects[k] || 0) > 0)),
+  },
+  {
+    key: 'reaction', title: 'Реакция стихий', tone: '#b8e04a',
+    body: 'Вторая метка не легла поверх первой — они схлопнулись. У каждой пары свой эффект и своя роль в бою.',
+    when: (g) => (g.player.stats.reactions || 0) > 0,
+  },
+  {
+    key: 'elite', title: 'Элита с аффиксом', tone: '#f0a03a',
+    body: 'Аффикс меняет не только числа: бронированный режет лёгкие удары, призрачный уклоняется. Смотри, с кем связался.',
+    when: (g) => g.enemies.some((e) => !e.dead && e.aggro && e.affix),
+  },
+  {
+    key: 'rarity', title: 'Редкость — это аффиксы', tone: '#68d47c',
+    body: 'Чем выше редкость, тем больше аффиксов сверх базы. Наведи курсор в инвентаре — сравнение с надетым покажет стрелки.',
+    when: (g) => inBag(g.player, (i) => i.rarity === 'rare' || i.rarity === 'epic'),
+  },
+  {
+    key: 'smith', title: 'Кузня Борина', tone: '#ffb35e',
+    body: 'Четыре вкладки: ковка, заточка, переплавка, разбор. Ненужную вещь выгоднее разобрать, чем продать.',
+    when: (g) => g.menus.mode === 'craft',
+  },
+  {
+    key: 'sharpen', title: 'Заточка — это риск', tone: '#ffd54a',
+    body: 'Три оружия той же редкости сгорают всегда. Пока не взята веха +3, при неудаче гибнет и само оружие.',
+    when: (g) => g.menus.mode === 'craft' && g.menus.craftTab === 'sharpen',
+  },
+  {
+    key: 'milestone', title: 'Вехи заточки', tone: '#ffd54a',
+    body: 'На +3 и +5 оружие получает лишний аффикс, на +7 — легендарное свойство. С +3 провал уже не рассыпает оружие, а откатывает.',
+    when: (g) => hasGear(g.player, (i) => (i.sharp || 0) >= 1),
+  },
+  {
+    key: 'set', title: 'Комплект', tone: '#68d47c',
+    body: 'Вещи одного комплекта помечены уголком в слоте. Две части дают бонус, четыре — второй, сильнее.',
+    when: (g) => {
+      const c = {};
+      for (const s of ['armor', 'helm', 'ring', 'amulet']) {
+        const it = g.player.equipment[s];
+        if (it && it.set) { c[it.set] = (c[it.set] || 0) + 1; if (c[it.set] >= 2) return true; }
+      }
+      return false;
+    },
+  },
+  {
+    key: 'unique', title: 'Легендарка — это свойство', tone: '#ffab3d',
+    body: 'У легендарных вещей главное не числа, а срабатывание. Описание — в карточке предмета оранжевым.',
+    when: (g) => hasGear(g.player, (i) => i.unique && UNIQUES[i.unique]) ||
+                 inBag(g.player, (i) => i.unique && UNIQUES[i.unique]),
+  },
+  {
+    key: 'doors', title: 'Двери подземелья', tone: '#b08aff',
+    body: 'Модификатор этажа выбираешь сам и изменить его потом нельзя. Риск поднимает добычу и опыт.',
+    when: (g) => g.menus.mode === 'descend',
+  },
+  {
+    key: 'altar', title: 'Проклятый алтарь', tone: '#ff8ac0',
+    body: 'Алтарь всегда что-то забирает. Дар держится до выхода на поверхность — и исчезает вместе с забегом.',
+    when: (g) => g.menus.mode === 'altar',
+  },
+  {
+    key: 'abyss', title: 'Бездна', tone: '#ff9ae0',
+    body: 'За 25-м этажом растёт Порча: она сжимает твою шкалу жизни и усиливает врагов. Снять её нельзя — только подняться.',
+    when: (g) => (g.corruption || 0) > 0,
+  },
+  {
+    key: 'depth', title: 'Рекорд глубины', tone: '#ff9ae0',
+    body: 'Рекорд хранится отдельно от сохранения: новая игра его не стирает. Он виден на титульном экране.',
+    when: (g) => (g.player.deepest || 0) >= ABYSS_START + 4,
+  },
+];
+
+export const LESSON_BY_KEY = Object.fromEntries(LESSONS.map((l) => [l.key, l]));
+
+/**
+ * Первый неоткрытый урок, условие которого выполнено. Возвращает null, если
+ * показывать нечего. Порядок в таблице — приоритет: базовые системы раньше.
+ */
+export function nextLesson(game, seen) {
+  for (const l of LESSONS) {
+    if (seen[l.key]) continue;
+    let ok = false;
+    try { ok = l.when(game); } catch { ok = false; }
+    if (ok) return l;
+  }
+  return null;
+}

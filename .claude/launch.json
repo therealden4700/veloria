@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "veloria",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/server.js"],
+      "autoPort": true
+    }
+  ]
+}
