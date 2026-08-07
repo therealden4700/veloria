@@ -268,9 +268,17 @@ export class Game {
       // нас этот номер уже похоронен и убран из списка; строим врага заново
       // тем же правилом, что и при заселении, чтобы вернулся тот же самый.
       if (!e || e.dead) {
-        const свежий = respawnOne(this.zone, this.worldSeed, s.i, this._население || {});
+        // Население зоны восстанавливаем по номеру общим правилом — так
+        // возвращается ровно тот, кто здесь стоял. А кого комната дописала по
+        // ходу игры (страж, засада), по номеру не восстановить: он появился не
+        // из описания зоны. Для таких снимок несёт уровень.
+        const свежий = s.lv !== undefined
+          ? new Enemy(s.k, s.lv, s.x, s.y)
+          : respawnOne(this.zone, this.worldSeed, s.i, this._население || {});
         if (!свежий) continue;
         свежий.nid = s.i;
+        свежий.aggro = true;
+        if (свежий.boss) { if (this.zone.boss) this.zone.boss.spawned = true; this.bossEntrance(свежий); }
         if (e) this.enemies[this.enemies.indexOf(e)] = свежий;
         else this.enemies.push(свежий);
         this._byNidLen = -1;
@@ -287,8 +295,12 @@ export class Game {
     this.playServerEvents();   // сначала события: там сказано, кто чей убийца
     for (const e of this.enemies) {
       if (!e || e.dead || живые.has(e.nid)) continue;
+      // Награду даёт только слово комнаты. Просто «пропал из снимка» её не
+      // даёт: пока клиент рождал засады сам, всё, чего комната не знала,
+      // хоронилось здесь же — с полной добычей и опытом за отряд, которого
+      // никто не видел.
       const by = this._убийцы && this._убийцы.get(e.nid);
-      this.killEnemy(e, { чужой: by !== undefined && by !== net.pid });
+      this.killEnemy(e, { чужой: by !== net.pid });
       if (this._убийцы) this._убийцы.delete(e.nid);
     }
   }
@@ -317,6 +329,13 @@ export class Game {
         audio.play(ev.c ? 'crit' : 'hit', 0.8);
       } else if (ev.t === 'dodge' && e) {
         this.floats.add(e.x, e.y - e.spr.h * 0.7, 'мимо', { color: '#c99cff', size: 9 });
+      } else if (ev.t === 'react' && e) {
+        // Реакцию посчитала комната — здесь только вспышка, звук и зачёт
+        // задания, и зачёт только за свою.
+        const r = REACTIONS[ev.k];
+        if (r) this.onReaction(e, ev.k, r, ev.pid === net.pid);
+      } else if (ev.t === 'level' && ev.pid === net.pid) {
+        this.onLevelUp(ev.n || 1);
       } else if (ev.t === 'swing' && ev.pid !== net.pid) {
         // чужой взмах: своя отдача уже отыграна при нажатии
         const o = (this._others || []).find((x) => x.pid === ev.pid);
@@ -819,6 +838,13 @@ export class Game {
     e.hp = 0;
     const p = this.player;
     if (opts.чужой) {
+      // Стража могли положить и без нас — но мир меняется для всех: музыка
+      // возвращается, спуск открывается. Своей остаётся только награда.
+      if (e.boss) {
+        this.hud.showBanner('ПОВЕРЖЕН', e.name, '#ffd06a');
+        if (this.zone.downExit) { this.zone.downExit.locked = false; }
+        audio.setTrack(TRACKS[BIOMES[this.zone.biomeId].music] || TRACKS.dungeon, { fadeOut: 1.0, fadeIn: 1.6 });
+      }
       audio.play('die', e.boss ? 0.6 : 0.35);
       this.particles.burst(e.x, e.y - e.r * 0.6, e.boss ? 40 : 12, {
         color: e.spr.c1 || '#c05a5a', color2: '#ffd0a0', speed: 90, life: 0.5, size: 2, g: 190, vz: 60,
@@ -1011,7 +1037,11 @@ export class Game {
   }
 
   /** Всплеск реакции: имя, цвет, частицы, звук. Без этого система невидима. */
-  onReaction(e, key, r) {
+  /**
+   * @param {boolean} [моя=true] — в общем мире реакции случаются и у соседей:
+   *   вспышку видно всем, а счётчик и зачёт задания идут тому, кто её вызвал.
+   */
+  onReaction(e, key, r, моя = true) {
     this.floats.add(e.x, e.y - (e.spr ? e.spr.h * 0.85 : 30), r.name, {
       color: r.color, size: 11, bold: true, crit: true,
     });
@@ -1023,6 +1053,7 @@ export class Game {
     this.shake.add(key === 'shatter' ? 6 : 3, 0.22);
     // У каждой реакции свой голос: раньше пять реакций делили три чужих звука.
     audio.play({ conduction: 'bolt', shatter: 'crit', corrosion: 'acid', corrode: 'acid', steam: 'steam' }[key] || 'cast', 0.9);
+    if (!моя) return;
     this.player.stats.reactions = (this.player.stats.reactions || 0) + 1;
     this.quests.onReaction(key, this);
   }
@@ -1113,6 +1144,15 @@ export class Game {
       if (!ev.done) {
         if (dist(p.x, p.y, ev.x, ev.y) > ev.r) continue;
         ev.done = true;
+        // В общем мире отряд поднимает комната — здесь остаётся только
+        // зрелище. Рождать своих значило бы драться с призраками: комната о
+        // них не знает, в снимке их нет, а всё, чего в снимке нет, хоронится.
+        if (this.serverRunsCombat) {
+          audio.play('boss', 0.5);
+          this.shake.add(4, 0.3);
+          this.hud.showBanner('ЗАСАДА!', 'лагерь ожил', '#ff7a5e');
+          continue;
+        }
         const table = BIOMES[this.zone.biomeId].enemies;
         const rng = makeRng((ev.x * 31 + ev.y * 17) | 0);
         for (const s of buildPacks([{ x: ev.x, y: ev.y }, { x: ev.x + 40, y: ev.y + 26 }], table, ev.level, rng)) {
@@ -1126,7 +1166,7 @@ export class Game {
         audio.play('boss', 0.5);
         this.shake.add(4, 0.3);
         this.hud.showBanner('ЗАСАДА!', 'лагерь ожил', '#ff7a5e');
-      } else if (!ev.rewarded && ev.enemies.every((e) => e.dead)) {
+      } else if (!ev.rewarded && !this.serverRunsCombat && ev.enemies.every((e) => e.dead)) {
         ev.rewarded = true;
         const rng = makeRng((ev.x * 13 + ev.y * 7) | 0);
         this.spawnLoot(ev.x, ev.y, { item: rollRune(rng, this.zone.level + 2) });
@@ -1923,6 +1963,9 @@ export class Game {
 
   updateBossTrigger() {
     const z = this.zone;
+    // В общем мире порог арены сторожит комната: страж там один на всех, и
+    // рождать своего значило бы драться с призраком, которого сервер не видит.
+    if (this.serverRunsCombat) return;
     if (!z.boss || z.boss.spawned) return;
     const p = this.player;
     if (dist(p.x, p.y, z.boss.x, z.boss.y) > (z.bossArena ? z.bossArena.r : 130)) return;
@@ -1931,6 +1974,11 @@ export class Game {
     e.aggro = true;
     e.nid = this._nextNid++;
     this.enemies.push(e);
+    this.bossEntrance(e);
+  }
+
+  /** Зрелище выхода стража — то же самое, кем бы он ни был рождён. */
+  bossEntrance(e) {
     this.hud.showBanner(t(e.name).toUpperCase(), 'ур. ' + e.level + ' · берегись', '#ff7a6a');
     audio.play('boss');
     // Босс обрывает тему биома быстро — он и должен перебивать, — а свою

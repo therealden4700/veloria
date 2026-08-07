@@ -16,7 +16,7 @@ installHeadless();
 const { initProps } = await import('../src/art/props.js');
 const { bakeAllMonsters } = await import('../src/art/sprites.js');
 const { generateBiomeZone, zoneSeedFor } = await import('../src/world/zone.js');
-const { populateZone, respawnOne } = await import('../src/world/populate.js');
+const { populateZone, respawnOne, makeBoss, makeAmbush } = await import('../src/world/populate.js');
 const { generateCity } = await import('../src/world/city.js');
 const { generateDungeon } = await import('../src/world/dungeon.js');
 const { Enemy } = await import('../src/entities/enemies.js');
@@ -61,6 +61,9 @@ const NULL_FX = { add: NOOP, burst: NOOP, ring: NOOP, spawn: NOOP, update: NOOP 
 const RESPAWN = Math.max(1, Number(process.env.RESPAWN_SEC) || 45);
 const RESPAWN_NEAR = 120;
 const RESPAWN_MAX_WAIT = RESPAWN * 2;
+// Страж — событие, а не поголовье: возвращается вчетверо реже и только когда в
+// арену снова вошли. Появиться в упор ему можно и нужно — за этим и идут.
+const BOSS_RESPAWN = RESPAWN * 4;
 
 
 
@@ -102,6 +105,7 @@ export class World {
     // игроков без единой правки. Заменить на честный выбор цели — отдельная
     // задача про правила коопа.
     this.player = null;
+    this.bossSlot = null;     // место стража в списке; появляется при первом входе в арену
   }
 
   // ── то, чем пользуется ИИ врагов
@@ -167,7 +171,7 @@ export class World {
       // слово нельзя.
       if (p.gainXp) p.gainXp(e.xpValue || 0, this);
     }
-    e._вернётся = this.time + RESPAWN;
+    e._вернётся = this.time + (e.boss ? BOSS_RESPAWN : RESPAWN);
     e._крайний = this.time + RESPAWN_MAX_WAIT;   // дольше держать пусто не даём
     this.events.push({ t: 'kill', i: this.enemies.indexOf(e), by: p ? p.pid : null });
   }
@@ -189,6 +193,8 @@ export class World {
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (!e || !e.dead || !e._вернётся || this.time < e._вернётся) continue;
+      if (e.boss) continue;                       // стража ведёт `bossTrigger`
+      if (e.pack === 'ambush') continue;          // засаду ведёт `ambushTrigger`
       if (this.time < (e._крайний || 0)) {
         let рядом = false;
         for (const p of this.players.values()) {
@@ -239,6 +245,120 @@ export class World {
     p.gold = Math.max(0, (p.gold || 0) - плата);
     p._встанет = this.time + 5;
     this.events.push({ t: 'pdeath', pid: p.pid, gold: плата });
+  }
+
+  /**
+   * Страж места.
+   *
+   * До сих пор его рождал клиент: в общем мире это значило, что у каждого свой
+   * босс, которого сервер не видит, не считает и не проверяет — а с него падают
+   * лучшие вещи в биоме. Теперь рождает комната, по тому же порогу входа в
+   * арену, и он один на всех, кто там стоит.
+   */
+  bossTrigger() {
+    const z = this.zone;
+    if (!z.boss) return;
+    const e = this.bossSlot !== null && this.bossSlot !== undefined ? this.enemies[this.bossSlot] : null;
+    if (e && !e.dead) return;                       // уже стоит
+    if (e && this.time < (e._вернётся || 0)) return;  // ещё не срок
+    const r = z.bossArena ? z.bossArena.r : 130;
+    let вошли = false;
+    for (const p of this.players.values()) {
+      if (p.dead) continue;
+      if ((p.x - z.boss.x) ** 2 + (p.y - z.boss.y) ** 2 <= r * r) { вошли = true; break; }
+    }
+    if (!вошли) return;
+    const b = makeBoss(z);
+    if (!b) return;
+    if (e) { b.nid = this.bossSlot; this.enemies[this.bossSlot] = b; }
+    else { this.bossSlot = this.enemies.length; b.nid = this.bossSlot; this.enemies.push(b); }
+    this.events.push({ t: 'boss', i: b.nid });
+  }
+
+  /**
+   * Засады из лагерей.
+   *
+   * Их тоже рождал клиент — и это было хуже, чем «у каждого свои»: комната о
+   * таком отряде не знает, в снимке его нет, а клиент хоронит всё, чего в
+   * снимке нет, — с добычей и опытом. Подошёл к лагерю в общем мире и получил
+   * награду за отряд, которого никто не видел.
+   */
+  ambushTrigger() {
+    for (const ev of this.zone.events || []) {
+      if (ev.kind !== 'ambush') continue;
+
+      // Лагерь взводится заново: иначе первый прошедший забирает его у всех
+      // навсегда — та же беда, что была с населением. Считаем срок от гибели
+      // последнего и только после этого снова ждём гостей.
+      if (ev.done) {
+        const свои = (ev._номера || []).map((i) => this.enemies[i]);
+        if (!свои.length || свои.some((e) => e && !e.dead)) continue;
+        if (!ev._взведётся) { ev._взведётся = this.time + RESPAWN; continue; }
+        if (this.time < ev._взведётся) continue;
+        ev.done = false; ev._взведётся = 0;
+      }
+
+      let вошли = false;
+      for (const p of this.players.values()) {
+        if (p.dead) continue;
+        if ((p.x - ev.x) ** 2 + (p.y - ev.y) ** 2 <= ev.r * ev.r) { вошли = true; break; }
+      }
+      if (!вошли) continue;
+      ev.done = true;
+      const отряд = makeAmbush(this.zone, ev);
+      // Места в списке у лагеря свои и постоянные: занимать новые на каждый
+      // налёт значило бы растить список вечно, а номер — это то, чем снимок
+      // ссылается на существо.
+      if (!ev._номера) {
+        ev._номера = [];
+        for (const e of отряд) { e.nid = this.enemies.length; this.enemies.push(e); ev._номера.push(e.nid); }
+      } else {
+        отряд.forEach((e, k) => {
+          const i = ev._номера[k];
+          if (i === undefined) { e.nid = this.enemies.length; this.enemies.push(e); ev._номера.push(e.nid); }
+          else { e.nid = i; this.enemies[i] = e; }
+        });
+      }
+      this.events.push({ t: 'ambush', x: Math.round(ev.x), y: Math.round(ev.y), n: отряд.length });
+    }
+  }
+
+  /**
+   * Взятый уровень.
+   *
+   * Опыт теперь считает комната, а значит и уровень берётся здесь — и `gainXp`
+   * зовёт `onLevelUp`, которого у комнаты не было. Нашлось не в лесу, а в
+   * Проломе: там страж даёт столько опыта, что уровень берут прямо с него, и
+   * такт падал ровно на убийстве босса. Тот же случай, что и с `proc`.
+   *
+   * Правило — очки развития и полное здоровье — уже отработал сам `gainXp`.
+   * Здесь остаётся сказать об этом клиенту: зрелище играет он.
+   */
+  onLevelUp(n) {
+    const p = this.player;
+    if (!p) return;
+    this.events.push({ t: 'level', pid: p.pid, lvl: p.level, n });
+  }
+
+  /**
+   * Реакции стихий.
+   *
+   * Комната сама вешает метки оружия в `damageEnemy`, а вторая метка на цели
+   * запускает реакцию — и та зовёт `bolt` с `onReaction`, которых у комнаты не
+   * было. Значит, герою с двумя стихиями на оружии хватило бы одного боя,
+   * чтобы уронить такт. Нашёл это не бой и не браузер, а список: стенд
+   * `room-surface-check` сверяет всё, что сущности просят у «игры», с тем, что
+   * комната умеет.
+   *
+   * Урон и метки реакция уже нанесла сама, общими правилами. Здесь остаётся
+   * счётчик и слово клиенту — вспышку и звук играет он.
+   */
+  bolt() { /* молния между целями — зрелище, смотреть некому */ }
+
+  onReaction(e, key) {
+    const p = this.player;
+    if (p && p.stats) p.stats.reactions = (p.stats.reactions || 0) + 1;
+    this.events.push({ t: 'react', i: this.enemies.indexOf(e), k: key, pid: p ? p.pid : null });
   }
 
   /** Поднять павших: мир общий, лежать в нём некому и незачем. */
@@ -348,6 +468,8 @@ export class World {
   step(dt) {
     this.time += dt;
     this.respawnDue();
+    this.bossTrigger();
+    this.ambushTrigger();
     this.raiseDead();
 
     // Игроков такт не двигает: они двигаются в `applyInput`, ровно теми шагами,
@@ -416,9 +538,16 @@ export class World {
       // Индекс врага — его место в общем списке, а не в отфильтрованном:
       // события ссылаются именно на него, и после первой же смерти нумерация
       // отфильтрованного списка разъехалась бы с ними.
-      enemies: this.enemies.map((e, i) => (e.dead ? null : ({
+      // Для тех, кого комната дописала по ходу игры — страж, засада, — несём
+      // ещё и уровень: население зоны клиент восстанавливает по номеру общим
+      // правилом, а этих по номеру не восстановить, они появились не из
+      // описания зоны.
+      enemies: this.enemies.map((e, i) => (e.dead ? null : (i < this.zone.spawns.length ? {
         i, k: e.key, x: Math.round(e.x), y: Math.round(e.y),
         hp: Math.round(e.hp), mx: Math.round(e.maxHp),
+      } : {
+        i, k: e.key, x: Math.round(e.x), y: Math.round(e.y),
+        hp: Math.round(e.hp), mx: Math.round(e.maxHp), lv: e.level,
       }))).filter(Boolean),
       ev: this.events.splice(0, this.events.length),
     };

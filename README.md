@@ -1846,8 +1846,64 @@ the pattern worth writing down:
   snapshot, and it stated with confidence that the world had not recovered. It now
   beats like a live client while it waits.
 
-**What is still missing.** The room does not yet spawn what the game spawns while
-it runs — the ambush packs and the boss are still the client's.
+### The guardian belongs to everyone
+
+The boss was spawned by the client. In a shared world that means everyone has
+their own — one the server never sees, never checks and never validated the loot
+from, and the biome's best drops come off it.
+
+The room owns the arena threshold now. It raises one guardian, and two players
+standing in the same forest see the same one with the same health: hit it and
+the number moves for both. It returns four times slower than a regular creature
+— it is an event, not a headcount — and only when somebody walks back into the
+arena. Appearing right in front of you is the point; that is what people come
+for.
+
+**The ambush camps were worse than "one each".** Walk up to a camp online and
+the client spawned the raiders itself. The room knew nothing about them, so they
+were absent from the snapshot — and the client buries everything missing from the
+snapshot, **with full loot and experience**. Free reward for a squad nobody saw.
+The rule is now simple and covers the whole class: in the shared world a kill
+pays out only when the room says who struck the last blow. Camps are the room's
+too, they re-arm after they are cleared, and they reuse their own slots in the
+list rather than claiming new ones every raid.
+
+The snapshot carries one extra number for creatures the room adds while it runs
+— their level. Zone population the client reconstructs by number through the
+shared rule, but a guardian or a raider did not come from the zone's description
+and cannot be rebuilt from a number alone.
+
+### The room could not do what the game can
+
+Twice in a row the room died the same way: an entity called a method the room did
+not have, and the **whole tick** threw — every creature after that point in the
+list stopped moving. First `proc`, on any monster's first hit. Then `onLevelUp`,
+and that one only showed up in the Breach, where the guardian gives enough
+experience to level up on the spot; the same code ran clean in the forest. Both
+times the stand pointed elsewhere: "the world did not come back", "the guardian
+broke".
+
+Catching that by luck does not work. [`tools/room-surface-check.js`](tools/room-surface-check.js)
+builds the list **from the code** — every `game.something(` in the entities and
+the reaction system — and checks it against what the room can do. It found a
+third one immediately, still live at the time: elemental reactions. The room
+applies weapon marks itself, a second mark on a target fires a reaction, and the
+reaction calls `bolt` and `onReaction`. A hero with two elements on their weapon
+needed one fight to bring the room down.
+
+Then it does it for real: puts a monster next to a hero for six seconds, hands
+over a hundred thousand experience, and kills the hero — because a method can be
+present and still do nothing.
+
+The mutation test earned its place here too. Breaking the arena threshold on
+purpose, the stand caught it. Breaking "the guardian is already standing" — it
+did **not**: the boss was recreated every tick in the same slot, so the count
+stayed one and the number stayed the same, while its health quietly returned to
+full and it could never be killed. That check exists now because the break
+existed first.
+
+**What is still missing.** Loot on the ground is still each client's own, and the
+room does not validate what dropped.
 
 ### A room per biome
 
