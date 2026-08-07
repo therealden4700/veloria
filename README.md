@@ -1780,9 +1780,74 @@ It was a rule, not a display quirk — so single player had it too, and the whol
 audit suite ran again on top of it: combat, loot, descent, zones, content, saves,
 onboarding, soak. All green.
 
-**What is still missing.** The co-op rules beyond loot: how difficulty scales for
-a party and who gets credit for a quest. And the room does not yet spawn what the
-game spawns while it runs — the ambush packs and the boss are still the client's.
+### One world, and it must not be eaten
+
+The design is one shared world rather than parties, and that changes what has to
+be true. Measured first, on the real rules: a geared player strips a biome in
+**1.5 to 3.5 minutes** — and that is a lower bound, since the bot walks in
+straight lines and nothing fights back.
+
+| biome | population | cleared in |
+|---|---|---|
+| Emerald Forest | 39 | 1.5 min |
+| Ashen Mire | 38 | 1.6 min |
+| Frozen Ridge | 43 | 3.4 min |
+| Smoldering Waste | 46 | 2.5 min |
+| The Breach | 39 | 3.5 min |
+
+The room never brought anyone back. In a shared world that means the first player
+through the forest empties it **permanently, for everyone**.
+
+The fallen now return. The delay comes from the same measurement: one hunter kills
+0.43 creatures a second, so over 45 s they owe the room about twenty — half a
+biome. Population does not sink below half while one player hunts.
+
+Nobody rises in your face: within 120 px of a living player the return is
+postponed. But not indefinitely — otherwise camping a corpse would hold a piece
+of the shared world empty for everyone else. After twice the delay the creature
+comes back regardless.
+
+**Two more things had to move to one place.** The room used to build its
+creatures the short way — `new Enemy(key, level, x, y)` — while the game applied
+pack membership, floor modifiers, corruption and elite affixes. So a "pack
+leader's lair" guardian, which in single player carries a shield or a rage, came
+out plain on the server. Populating a zone is a rule, not a detail of one side:
+it now lives in [`world/populate.js`](src/world/populate.js), and both sides call
+it. A creature returns through the same function that first placed it, so it comes
+back as itself.
+
+**A real crash was hiding behind it, and the server log found it, not the
+stand.** The moment any monster landed a hit on any player, the room's whole tick
+threw: `takeDamage` calls `game.proc` for legendary effects, and the room had no
+`proc`. Every creature after the striker in the list stopped updating that tick.
+The stand saw only "the world did not come back" and pointed at the wrong thing.
+The room now runs procs — they are rules, they heal and burn — and knows what to
+do when a player dies: the same twelfth of gold as in single player, no death
+screen, back on their feet at the entrance after five seconds. A shared world does
+not stop for one funeral.
+
+[`tools/world-alive-check.js`](tools/world-alive-check.js) guards it, talking to
+the room as a client with no world of its own: kill, stand over the body past the
+delay (must not return), stand past the cap (must return) — same kind, full
+health, its own corner. Stands raise the room with a short delay
+(`RESPAWN_SEC=8`) so a run takes seconds instead of minutes; the room states its
+own rule in `welcome`, and the stand waits by what it is told rather than by what
+it remembers.
+
+**Three times over, the stand was the thing that was broken**, which is becoming
+the pattern worth writing down:
+
+- It sent a fixed 50 ms per step while real time ran slower, and the room's
+  anti-speedhack budget ate the surplus — the hero crawled at half speed.
+- It walked "away from the body" and hit the map's western wall after fifty
+  pixels, then reported that the fallen never returned.
+- Worst of all, it stood **silent** for eleven seconds while waiting. The room
+  disconnects the silent after fifteen, so every later reading came from a frozen
+  snapshot, and it stated with confidence that the world had not recovered. It now
+  beats like a live client while it waits.
+
+**What is still missing.** The room does not yet spawn what the game spawns while
+it runs — the ambush packs and the boss are still the client's.
 
 ### A room per biome
 

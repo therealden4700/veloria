@@ -16,6 +16,7 @@ installHeadless();
 const { initProps } = await import('../src/art/props.js');
 const { bakeAllMonsters } = await import('../src/art/sprites.js');
 const { generateBiomeZone, zoneSeedFor } = await import('../src/world/zone.js');
+const { populateZone, respawnOne } = await import('../src/world/populate.js');
 const { generateCity } = await import('../src/world/city.js');
 const { generateDungeon } = await import('../src/world/dungeon.js');
 const { Enemy } = await import('../src/entities/enemies.js');
@@ -47,6 +48,20 @@ const BUDGET_CAP = 0.25;
 const NOOP = () => {};
 const NULL_FX = { add: NOOP, burst: NOOP, ring: NOOP, spawn: NOOP, update: NOOP };
 
+// Возрождение.
+//
+// Срок выбран замером: один охотник кладёт 0,43 врага в секунду, значит за 45 с
+// он «должен» комнате два десятка — половину биома. Меньше половины населения
+// зона не проседает, пока охотник один. Стенды поднимают комнату с коротким
+// сроком (`RESPAWN_SEC`), чтобы прогон не длился минутами.
+//
+// Рядом с живым игроком возрождение откладывается — но не бесконечно. Иначе
+// достаточно встать в лагере у тела, чтобы держать кусок общего мира пустым для
+// всех остальных. Ждём не дольше двух сроков.
+const RESPAWN = Math.max(1, Number(process.env.RESPAWN_SEC) || 45);
+const RESPAWN_NEAR = 120;
+const RESPAWN_MAX_WAIT = RESPAWN * 2;
+
 
 
 export class World {
@@ -76,7 +91,10 @@ export class World {
     this.floats = NULL_FX;
     this.shake = { add: NOOP, update: NOOP };
 
-    for (const s of this.zone.spawns) this.enemies.push(new Enemy(s.key, s.level, s.x, s.y));
+    // Заселяет общее правило. Раньше комната строила врагов коротко и не
+    // давала элитам свойств: в общем мире страж «логова вожака» выходил
+    // обыкновенным, хотя в одиночной игре он с щитом или яростью.
+    for (const e of populateZone(this.zone, this.seed, {})) this.enemies.push(e);
 
     // `player` — то, на кого смотрит ИИ. Врагов писали под одного героя, и
     // читают они именно это поле. Перед ходом каждого врага сюда кладётся
@@ -149,11 +167,92 @@ export class World {
       // слово нельзя.
       if (p.gainXp) p.gainXp(e.xpValue || 0, this);
     }
+    e._вернётся = this.time + RESPAWN;
+    e._крайний = this.time + RESPAWN_MAX_WAIT;   // дольше держать пусто не даём
     this.events.push({ t: 'kill', i: this.enemies.indexOf(e), by: p ? p.pid : null });
+  }
+
+  /**
+   * Возрождение.
+   *
+   * Мир один на всех, и без этого первый прошедший вычищает биом навсегда:
+   * замер — биом пустеет за 1,5–3,5 минуты, а населения в нём около сорока.
+   * Срок выбран по этому же замеру: один охотник кладёт 0,43 врага в секунду,
+   * значит за 45 с он «должен» комнате два десятка — половину биома. Меньше
+   * половины населения зона не проседает, пока охотник один.
+   *
+   * На глазах никто не воскресает: если рядом живой игрок, срок отодвигается.
+   * Враг рождается тем же правилом, что и при заселении, и на своём месте —
+   * иначе номер в снимке начал бы означать другое существо.
+   */
+  respawnDue() {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e || !e.dead || !e._вернётся || this.time < e._вернётся) continue;
+      if (this.time < (e._крайний || 0)) {
+        let рядом = false;
+        for (const p of this.players.values()) {
+          if (p.dead) continue;
+          if ((p.x - e.x) ** 2 + (p.y - e.y) ** 2 < RESPAWN_NEAR ** 2) { рядом = true; break; }
+        }
+        if (рядом) { e._вернётся = this.time + 2; continue; }
+      }
+      const свежий = respawnOne(this.zone, this.seed, i, {});
+      if (!свежий) { e._вернётся = 0; continue; }
+      свежий.nid = i;
+      this.enemies[i] = свежий;
+      this.events.push({ t: 'spawn', i });
+    }
   }
 
   summonAdds() {}
   shockwave() {}
+
+  /**
+   * Срабатывания легендарок.
+   *
+   * Комната этого не умела вовсе, и первый же удар монстра по игроку ронял
+   * такт целиком: `takeDamage` зовёт `game.proc`, а его не было. Найдено в
+   * логе сервера, а не стендом — стенд видел только «мир не восстановился».
+   *
+   * Это правила, а не украшение: свойства лечат, бьют и снимают откаты. Кого
+   * задело — тот и в `this.player`: перед ходом каждого врага туда кладётся
+   * ближайший игрок, и бьёт враг именно его.
+   */
+  proc(hook, ctx) {
+    const p = this.player;
+    if (!p || !p.uniques) return;
+    for (const u of p.uniques(hook)) if (u.run) u.run(this, ctx || {});
+  }
+
+  /**
+   * Смерть игрока в общем мире.
+   *
+   * Плата та же, что и в одиночной игре — двенадцатая часть золота, — а вот
+   * экрана смерти здесь нет: мир общий и живёт дальше. Герой поднимается на
+   * точке входа через пять секунд.
+   */
+  onPlayerDeath() {
+    const p = this.player;
+    if (!p) return;
+    const плата = Math.floor((p.gold || 0) * 0.12);
+    p.gold = Math.max(0, (p.gold || 0) - плата);
+    p._встанет = this.time + 5;
+    this.events.push({ t: 'pdeath', pid: p.pid, gold: плата });
+  }
+
+  /** Поднять павших: мир общий, лежать в нём некому и незачем. */
+  raiseDead() {
+    const sp = this.zone.spawnPoint || { x: 100, y: 100 };
+    for (const p of this.players.values()) {
+      if (!p.dead || this.time < (p._встанет || 0)) continue;
+      p.dead = false; p.deadT = 0; p.pose = 'idle';
+      p.hp = p.maxHp; p.mp = p.maxMp;
+      p.x = sp.x; p.y = sp.y; p.vx = 0; p.vy = 0;
+      p.iframe = 2;
+      this.events.push({ t: 'praise', pid: p.pid, x: sp.x, y: sp.y });
+    }
+  }
 
   // ── игроки
   /**
@@ -248,6 +347,8 @@ export class World {
 
   step(dt) {
     this.time += dt;
+    this.respawnDue();
+    this.raiseDead();
 
     // Игроков такт не двигает: они двигаются в `applyInput`, ровно теми шагами,
     // которые проиграл клиент. Здесь остаются только враги — у них своё время.
@@ -327,6 +428,7 @@ export class World {
   describe() {
     return { kind: this.kind, id: this.biomeId, floor: this.floor, seed: this.seed,
              name: this.zone.name, w: this.zone.w, h: this.zone.h,
-             spawn: this.zone.spawnPoint, enemies: this.enemies.length };
+             spawn: this.zone.spawnPoint, enemies: this.enemies.length,
+             respawn: RESPAWN, respawnNear: RESPAWN_NEAR, respawnMax: RESPAWN_MAX_WAIT };
   }
 }

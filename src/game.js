@@ -30,6 +30,7 @@ import { Enemy, Projectile, ENEMIES } from './entities/enemies.js';
 
 import { generateCity, NPC_DEFS } from './world/city.js';
 import { generateBiomeZone, zoneSeedFor } from './world/zone.js';
+import { populateZone, respawnOne } from './world/populate.js';
 import { buildPacks } from './systems/packs.js';
 import { generateDungeon, isBossFloor } from './world/dungeon.js';
 import { BIOMES, OVERWORLD } from './world/biomes.js';
@@ -46,7 +47,7 @@ import { canAfford, craftItem, salvageYield, reforgeCost, sharpenChance, sharpen
          sharpenFuel, applySharpen, matName, SHARP_MAX,
          sharpFloor, revertToMilestone } from './systems/craft.js';
 import { UNIQUES, SETS } from './systems/uniques.js';
-import { FLOOR_MODS, ALTARS, AFFIXES, AFFIX_KEYS, affixChance, rollDoors } from './systems/dungeon_mods.js';
+import { FLOOR_MODS, ALTARS, rollDoors } from './systems/dungeon_mods.js';
 
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
@@ -261,10 +262,20 @@ export class Game {
     if (!snap) return;
     const живые = new Set();
     for (const s of snap.enemies || []) {
-      const e = this.enemyByNid(s.i);
-      if (!e) continue;
+      let e = this.enemyByNid(s.i);
       живые.add(s.i);
-      if (e.dead) continue;
+      // Комната возрождает павших — иначе общий мир вычищался бы навсегда. У
+      // нас этот номер уже похоронен и убран из списка; строим врага заново
+      // тем же правилом, что и при заселении, чтобы вернулся тот же самый.
+      if (!e || e.dead) {
+        const свежий = respawnOne(this.zone, this.worldSeed, s.i, this._население || {});
+        if (!свежий) continue;
+        свежий.nid = s.i;
+        if (e) this.enemies[this.enemies.indexOf(e)] = свежий;
+        else this.enemies.push(свежий);
+        this._byNidLen = -1;
+        e = свежий;
+      }
       const k = 0.35;
       e.x += (s.x - e.x) * k; e.y += (s.y - e.y) * k;
       e.hp = s.hp; e.maxHp = s.mx;
@@ -589,25 +600,8 @@ export class Game {
     const ce = this.player._corr;
     this.player.hp = Math.min(this.player.hp, this.player.maxHp);
 
-    const affRng = makeRng((this.worldSeed ^ (zone.floor || 0) * 613) >>> 0);
-    for (const s of zone.spawns) {
-      const e = new Enemy(s.key, s.level, s.x, s.y);
-      e.pack = s.pack || null;
-      if (mod) {
-        e.spdMul *= mod.spdMul || 1;
-        e.damage = Math.round(e.damage * (mod.dmgMul || 1));
-        e.armorBonus += mod.armor || 0;
-      }
-      if (corr) {
-        e.damage = Math.round(e.damage * ce.enemyDmg);
-        e.spdMul *= ce.enemySpd;
-      }
-      if (!e.boss && (s.forceAffix || (zone.floor && affRng() < affixChance(zone.floor)))) {
-        const k = affRng.pick(AFFIX_KEYS);
-        e.applyAffix(k, AFFIXES[k]);
-      }
-      this.enemies.push(e);
-    }
+    this._население = { mod, corr: corr ? ce : null };
+    for (const e of populateZone(zone, this.worldSeed, this._население)) this.enemies.push(e);
     // Стабильный номер врага — тот, под которым он родился. Комната шлёт в
     // снимке именно его: её список не редеет, а наш вычищает трупы, и после
     // первой же смерти позиции разъезжаются. Раз номер стоит в сообщении,
