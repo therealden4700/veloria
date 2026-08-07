@@ -7,6 +7,8 @@
 **A 2D pixel-art ARPG that forges itself at load —
 every sprite, every shadow, every note of music written in code.**
 
+### ▶ [Play it in your browser](https://therealden4700.github.io/veloria/)
+
 *by [therealden4700](https://github.com/therealden4700)*
 
 </div>
@@ -57,6 +59,12 @@ Five separate times this project a finding turned out to be in the measuring
 apparatus rather than in the game. Each of those is written down too.
 
 ## Run it
+
+The quickest way is [the live build](https://therealden4700.github.io/veloria/) —
+it needs nothing installed. That page is single player: it is static files, so
+there is no room server behind it and the "shared city" button is not shown.
+
+For co-op, or to run it yourself:
 
 ```bash
 node server/server.js
