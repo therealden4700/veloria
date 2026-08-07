@@ -90,2050 +90,2154 @@ for skills, `Shift` to dash, `Q` for a potion, `E` to interact. `I` inventory,
 | **Languages** | Russian and English, switchable in settings |
 | **Multiplayer** | a room server on Node built-ins; the server simulates, the client predicts |
 
-## The README below is a work journal
+## Everything below is a work journal
 
-Everything under here is in Russian and it is not documentation — it is the
-record of the work: what was measured, what it showed, what was built as a
-result and why it was built that way. Including the mistakes, kept in place
-because the reasoning is the point.
+What follows is not documentation — it is the record of the work: what was
+measured, what it showed, what was built as a result, and why it was built that
+way. Mistakes included, kept in place, because the reasoning is the point.
 
----
 
-2D-пиксельная ARPG в браузере: город-хаб, пять биомов, бесконечное подземелье,
-квесты, лут, прокачка. Вся графика, звук и музыка генерируются кодом при
-загрузке — единственный внешний файл во всём проекте — `assets/title.png`,
-заставка главного экрана.
+A 2D pixel ARPG in the browser: a hub city, five biomes, an endless dungeon,
+quests, loot, levelling. Every sprite, sound and note is generated in code at
+load time — the only external file in the whole project is `assets/title.png`,
+the title screen art.
 
-Заставка лежит ровно в 480×270, во внутреннем разрешении игры: рисуется один к
-одному, без сглаживания, и увеличивается вместе со всем кадром той же лестницей
-пикселей. Хранить её крупнее незачем — канвас всё равно 480 пикселей шириной, а
-так она весит 265 КБ вместо двух с половиной мегабайт. Грузится параллельно
-запеканию спрайтов, так что на время загрузки не влияет (замер: 3 мс из 98).
-Если файл пропадёт, титульный экран нарисует прежний фон со звёздами и силуэтом
-города — игра не должна падать из-за картинки.
+The title art is stored at exactly 480×270, the game's internal resolution: it
+is drawn one to one, without smoothing, and scales up with the rest of the
+frame on the same ladder of pixels. Storing it larger would be pointless — the
+canvas is 480 pixels wide anyway — and this way it weighs 265 KB instead of two
+and a half megabytes. It loads in parallel with baking the sprites, so it costs
+nothing on the loading screen (measured: 3 ms out of 98). If the file goes
+missing, the title screen draws the old background of stars and a city
+silhouette — the game must not fall over because of a picture.
 
-## Запуск
+The port comes from an environment variable: `PORT=9000 node server/server.js`.
 
-```bash
-node server/server.js
-```
+## Controls
 
-Открыть http://localhost:8123. Порт задаётся переменной: `PORT=9000 node server/server.js`.
-
-Нужен **Node 22.5 или новее** — и больше ничего: зависимостей у проекта нет,
-сервер собран на встроенных модулях `node:`. Граница именно такая из-за
-`node:sqlite`, на котором лежит хранилище персонажей: в более старых выпусках
-его просто нет. Сервер же раздаёт файлы и держит комнату для совместной игры.
-База создаётся сама при первом запуске.
-
-Если нужна только одиночная игра, хватит любого статического сервера — в
-комплекте лежит `python3 serve.py`. С `file://` не заработает: игра собрана на
-ES-модулях.
-
-## Управление
-
-| Действие | Клавиши |
+| Action | Keys |
 |---|---|
-| Движение | `W A S D` / стрелки |
-| Удар | `ЛКМ` или `Пробел` |
-| Умения (три слота рун) | `F` / `R` / `G` (или `1` `2` `3`) |
-| Рывок (неуязвимость) | `ПКМ` или `Shift` |
-| Выпить зелье | `Q` |
-| Взаимодействие | `E` |
-| Инвентарь / Герой / Задания / Карта | `I` / `C` / `U` / `M` |
-| Выбросить предмет | `ПКМ` по нему в рюкзаке (с подтверждением) |
-| Стихии (схема реакций) / Записи | вкладки в журнале |
-| Пауза | `Esc` |
-| Настройки | пункт на главном экране и в паузе |
-| Во весь экран | `F11` или кнопка в настройках |
+| Move | `W A S D` / arrows |
+| Attack | `LMB` or `Space` |
+| Skills (three rune slots) | `F` / `R` / `G` (or `1` `2` `3`) |
+| Dash (with i-frames) | `RMB` or `Shift` |
+| Drink a potion | `Q` |
+| Interact | `E` |
+| Inventory / Character / Quests / Map | `I` / `C` / `U` / `M` |
+| Drop an item | `RMB` on it in the bag (with confirmation) |
+| Elements (reaction chart) / Notes | tabs in the journal |
+| Pause | `Esc` |
+| Settings | an entry on the title screen and in the pause menu |
+| Fullscreen | `F11` or the button in settings |
 
-Звук и экран живут в одной панели «Настройки», которая открывается и с главного
-экрана, и из паузы, и возвращает туда, откуда её позвали. В паузе они раньше
-были двумя строками-переключателями и занимали столько же места, сколько
-«Сохранить» и «Выйти», хотя трогают их заметно реже.
+Sound and screen live in one Settings panel, which opens both from the title
+screen and from the pause menu, and returns to whichever called it. In the pause
+menu they used to be two toggle rows taking as much space as "Save" and "Quit",
+though they are touched noticeably less often.
 
-Панель ходится и мышью, и клавишами — в паузу заходят с клавиатуры, и потерять
-это при переезде было бы не переносом, а поломкой: `↑` `↓` выбирают строку,
-`← →` крутят громкость шагом 5%, `Enter` жмёт, `Esc` возвращает.
+The panel works with both mouse and keys — people reach the pause menu from the
+keyboard, and losing that in the move would have been a break rather than a
+port: `↑` `↓` pick a row, `← →` turn the volume in 5% steps, `Enter` presses,
+`Esc` goes back.
 
-Настройки лежат в `localStorage` **отдельно от сохранения**: громкость
-принадлежит человеку, а не персонажу, и «Новая игра» её не сбрасывает.
-Выключатель звука и ползунок — разные вещи: снять глушение возвращает
-выставленную громкость, а не единицу, и наоборот — сдвиг ползунка с нуля сам
-снимает глушение, иначе игрок тянет ползунок, ничего не слышит и решает, что
-звук сломан.
+Settings live in `localStorage` **separately from the save**: volume belongs to
+the person, not to the character, and "New game" does not reset it. The mute
+switch and the slider are different things: unmuting restores the volume that
+was set, not 1.0; and conversely, moving the slider off zero unmutes by itself,
+otherwise the player drags the slider, hears nothing, and decides the sound is
+broken.
 
-Направление удара — по курсору мыши. Если двигаться только клавиатурой,
-герой бьёт туда, куда идёт.
+Attacks aim at the mouse cursor. If you move with the keyboard only, the hero
+strikes in the direction of travel.
 
-## Что есть в игре
+## What is in the game
 
-Продать вещь можно только у торговца — не из рюкзака посреди подземелья.
-Выбросить — правым кликом по предмету, с подтверждением: выброшенное пропадает
-насовсем, потому что подбор магнитит лут в радиусе 46 пикселей и брошенное
-вернулось бы в рюкзак через полсекунды.
+You can only sell at a merchant — not out of your bag in the middle of a
+dungeon. Dropping is a right click on the item, with confirmation: a dropped
+item is gone for good, because pickup magnets loot within 46 pixels and a
+dropped item would come back to the bag half a second later.
 
-**Велория** — безопасный город. Кузнец (торговля оружием плюс кузня: ковка,
-заточка, переплавка, разбор), оружейница (доспехи, шлемы, украшения), алхимик
-(зелья, свитки возврата), рунная ткачиха (руны умений и слияние трёх одинаковых
-в одну рангом выше), наставник (вложить очки развития, сброс за 200 золота),
-капитан гильдии (задания), хранитель врат (быстрое перемещение по открытым биомам).
+**Veloria** is the safe city. A blacksmith (weapon trading plus the forge:
+crafting, sharpening, reforging, salvage), an armourer (armour, helms,
+trinkets), an alchemist (potions, town portal scrolls), a rune weaver (skill
+runes, and fusing three identical ones into a higher grade), a mentor (spend
+stat points, respec for 200 gold), a guild captain (quests), and a gatekeeper
+(fast travel across the biomes you have opened).
 
-**Биомы** открываются по уровню и отличаются мобами, погодой и светом:
+**Biomes** open by level and differ in monsters, weather and light:
 
-| Биом | Уровень | Босс |
+| Biome | Level | Boss |
 |---|---|---|
-| Изумрудный лес | 1–6 | Древень Корнегрив |
-| Пепельная топь | 6–13 | Тинная Карга |
-| Мёрзлый кряж | 13–21 | Хранитель Стужи |
-| Тлеющая пустошь | 21–32 | Расплавленный Колосс |
-| Пролом | 40–52 | Сердце Пролома |
+| Emerald Forest | 1–6 | Rootgrave the Treant |
+| Ashen Mire | 6–13 | The Silt Hag |
+| Frozen Ridge | 13–21 | Warden of the Frost |
+| Smoldering Waste | 21–32 | The Molten Colossus |
+| The Breach | 40–52 | The Breach Heart |
 
-В каждом биоме: портал домой, костёр, сундуки, арена с боссом, вход в катакомбы
-и **три точки интереса** из четырёх возможных — древние руины с обелиском,
-дающим благословение на 90 секунд; разбойничий лагерь, который оживает засадой,
-когда подходишь; логово вожака с элитой под аффиксом и богатым сундуком;
-стоянка бродячего торговца с редким товаром.
+Every biome has: a portal home, a campfire, chests, a boss arena, an entrance to
+the catacombs, and **three points of interest** out of four possible ones —
+ancient ruins with an obelisk granting a 90-second blessing; a bandit camp that
+springs an ambush when you approach; a pack leader's lair with an affixed elite
+and a rich chest; and a wandering merchant's camp with rare stock.
 
-**Враги ходят отрядами**, а не поштучно: щитоносец впереди, стрелки сзади, шаман
-в тылу. Заметил один — поднимается весь отряд. Восемь шаблонов: дозор, застава,
-ватага, свора, ковен, мины, громилы, одиночка.
+**Enemies travel in packs**, not one by one: a shield bearer in front, archers
+behind, a shaman at the back. Spot one and the whole pack rises. Eight
+templates: patrol, outpost, warband, pack, coven, mines, brutes, loner.
 
-## Игра объясняет себя сама
+## The game explains itself
 
-Туториала в начале нет намеренно: вывалить на игрока тринадцать умений, четыре
-стихийные реакции, вехи заточки и порчу Бездны в первую минуту — значит не
-объяснить ничего. Вместо этого каждая система объясняется **в тот момент, когда
-впервые становится нужной**, ровно один раз, и запоминается в сохранении.
+There is deliberately no tutorial at the start: dumping thirteen skills, four
+elemental reactions, sharpening milestones and Abyss corruption on a player in
+the first minute means explaining nothing. Instead, each system explains itself
+**at the moment it first becomes relevant**, exactly once, and is remembered in
+the save.
 
-Восемнадцать таких моментов: первая связка ударов, первая руна, первая
-пассивка, первый щитоносец, первая метка на враге, первая сработавшая реакция,
-первая элита с аффиксом, первый заход в кузню, первая заточка и её вехи, первый
-собранный комплект, первая легендарка, двери подземелья, проклятый алтарь, вход
-в Бездну, рекорд глубины.
+Eighteen such moments: the first attack combo, the first rune, the first
+passive, the first shield bearer, the first mark on an enemy, the first reaction
+that fires, the first affixed elite, the first visit to the forge, the first
+sharpening and its milestones, the first completed set, the first legendary, the
+dungeon doors, a cursed altar, entering the Abyss, a depth record.
 
-Карточка **выезжает сбоку и не блокирует ничего** — ни бой, ни управление, ни
-меню. Модальное окно посреди схватки было бы худшим способом что-то объяснить.
-Живёт девять секунд, уходит сама, убирается по Esc или клику; если сработало
-несколько разом — встают в очередь и показываются по одной.
+The card **slides in from the side and blocks nothing** — not combat, not
+controls, not menus. A modal window in the middle of a fight would be the worst
+possible way to explain anything. It lives nine seconds, leaves by itself, and
+can be dismissed with Esc or a click; if several fire at once they queue and
+show one at a time.
 
-Всё показанное копится во вкладке **«Записи»** журнала: объяснение, промелькнувшее
-в бою, иначе терялось бы навсегда.
+Everything shown accumulates in the **Notes** tab of the journal: an explanation
+that flashed by during a fight would otherwise be lost forever.
 
-## Бездна
+## The Abyss
 
-За 25-м этажом катакомбы становятся **Бездной**. Поводом была не нехватка
-контента: симуляция показала, что глубина не ломалась, а **провисала**. На сотом
-этаже герой убивал рядового моба за 12,8 удара, а сам умирал за 18,5 — бои
-растягивались, опасность не росла. Классическая инфляция чисел.
+Past floor 25 the catacombs become the **Abyss**. The reason was not a shortage
+of content: simulation showed that depth was not breaking, it was **sagging**. On
+floor one hundred the hero killed a regular monster in 12.8 hits and died in
+18.5 — fights stretched out, danger did not grow. Classic number inflation.
 
-Поэтому **Порча** бьёт не по здоровью мобов (это дало бы ещё более длинные бои),
-а по запасу прочности героя. Она растёт с глубиной, не снимается и не выбирается:
+So **Corruption** does not hit monster health (that would only make fights even
+longer):
+it hits the hero's margin for error instead. It grows with depth, cannot be
+removed and cannot be chosen:
 
-| | эффект |
+| | effect |
 |---|---|
-| Здоровье героя | до −50% |
-| Урон врагов | до +100% |
-| Скорость врагов | до +40% |
-| Добыча и опыт | до +360% / +280% |
+| Hero health | up to −50% |
+| Enemy damage | up to +100% |
+| Enemy speed | up to +40% |
+| Loot and experience | up to +360% / +280% |
 
-Здоровье мобов при этом растёт втрое медленнее прежнего. Что получилось
-(герой 40-го уровня в легендарках 6-го ранга — потолок снаряжения):
+Monster health, meanwhile, grows three times more slowly than before. The
+result (a level 40 hero in tier 6 legendaries — the gear ceiling):
 
-| этаж | порча | ударов до смерти героя | убить моба |
+| floor | corruption | hits until the hero dies | time to kill a monster |
 |---|---|---|---|
-| 20 | — | 18,7 | 0,9 с |
-| 26 | 1 | 15,2 | 1,5 с |
-| 35 | 10 | 9,5 | 1,6 с |
-| 45 | 20 | 6,3 | 1,8 с |
-| 55 | 30 | 4,4 | 2,2 с |
-| 65 | 40 | 2,8 | 2,1 с |
-| 100 | 40 | 2,1 | 3,1 с |
+| 20 | — | 18.7 | 0.9 s |
+| 26 | 1 | 15.2 | 1.5 s |
+| 35 | 10 | 9.5 | 1.6 s |
+| 45 | 20 | 6.3 | 1.8 s |
+| 55 | 30 | 4.4 | 2.2 s |
+| 65 | 40 | 2.8 | 2.1 s |
+| 100 | 40 | 2.1 | 3.1 s |
 
-Кривая выполаживается, а не уходит в ноль: иначе глубина упиралась бы в стену
-«убивают с одного удара». Обычные катакомбы до 25-го этажа не тронуты.
+The curve flattens rather than falling to zero: otherwise depth would hit a wall
+of "killed in one hit". The ordinary catacombs down to floor 25 are untouched.
 
-Третьим рычагом напрашивалась броня, но замер показал, что снижение урона у героя
-и так держится около 50% и в потолок 82% не упирается — пробивать было нечего.
-Убран как рычаг, который ничего не делает, но усложняет модель.
+Armour suggested itself as a third lever, but measurement showed the hero's
+damage reduction already sits around 50% and never reaches the 82% cap — there
+was nothing to punch through. Dropped as a lever that does nothing while making
+the model harder to reason about.
 
-**Чем глубже, тем чище добыча.** Порог редкости растёт с порчей: на 40-м этаже
-обычные вещи уже не падают, на 62-м — только эпические и легендарные. Оттуда же
-**Слеза Бездны** и три уникальных свойства, которых нет больше нигде — ни в
-таблице дропа, ни в заточке на +7: **Полое сердце** (порча отнимает вдвое меньше
-здоровья), **Ненасытный** (каждое убийство +2% урона до конца этажа),
-**Взгляд Бездны** (пропущенный удар с шансом 25% вешает на бьющего все четыре
-метки разом).
+**The deeper you go, the cleaner the loot.** The rarity floor rises with
+corruption: by floor 40 common items stop dropping, by floor 62 only epics and
+legendaries do. The same place yields the **Abyss Tear** and three unique
+properties found nowhere else — not in the drop tables, not from sharpening to
++7: **Hollow Heart** (corruption takes half as much health), **The Insatiable**
+(every kill grants +2% damage until the end of the floor), and **Gaze of the
+Abyss** (a hit you take has a 25% chance to put all four marks on the attacker
+at once).
 
-На боссовых этажах Бездны **стражи чередуются** — Пасть Пустоты, Полый
-Государь, Тлеющая Вдова, Корневой Страж и Лич: двадцать шесть боссовых этажей
-подряд с одним и тем же боем ладдером не были бы.
+On the Abyss boss floors the **guardians rotate** — the Void Maw, the Hollow
+King, the Smoldering Widow, the Root Warden and the Lich: twenty-six boss floors
+in a row with the same fight would not be a ladder.
 
-Рекорд глубины хранится отдельно от сохранения — новая игра его не стирает,
-иначе ладдер обнулялся бы вместе с персонажем.
+The depth record is stored separately from the save — a new game does not erase
+it, otherwise the ladder would reset along with the character.
 
-**Катакомбы — забег, а не коридор.** Перед каждым спуском выбор из двух дверей с
-модификаторами этажа: полчище, исступление, укрепление, мгла, голод, алчность,
-хрупкость, травля, щедрость, затишье. Риск повышает добычу и опыт до +90%.
-На этажах попадаются проклятые алтари: шесть сделок, где всегда что-то отдаёшь —
-пятую часть здоровья за треть урона, половину золота за редкий предмет, третий
-слот умения за +60% опыта. Дары держатся до выхода на поверхность. Чем глубже,
-тем чаще у мобов аффиксы: стремительный, бронированный, пылающий, вампирский,
-исполинский, призрачный. Каждый пятый этаж — босс, и пока он жив, спуск закрыт.
+**The catacombs are a run, not a corridor.** Before each descent you choose
+between two doors with floor modifiers: horde, frenzy, fortification, gloom,
+hunger, greed, brittleness, hunted, bounty, lull. Risk raises loot and
+experience by up to +90%. Cursed altars turn up on the floors: six bargains
+where you always give something up — a fifth of your health for a third more
+damage, half your gold for a rare item, your third skill slot for +60%
+experience. The gifts last until you surface. The deeper you are, the more often
+monsters carry affixes: swift, armoured, blazing, vampiric, titanic, spectral.
+Every fifth floor is a boss, and while it lives the way down is shut.
 
-**Умения — руны, а не классы.** Тринадцать активных (вихрь, раскол, сотрясение с
-оглушением, теневой рывок, пронзание, аркановый залп, ливень стрел, цепная молния,
-стена огня, ледяная новая, ядовитое облако, исцеление, барьер) и тринадцать
-пассивных. Три активных слота плюс один пассивный, оружие ни на что не влияет.
-Редкость руны усиливает эффект и укорачивает откат; три одинаковых сплавляются
-в одну рангом выше.
+**Skills are runes, not classes.** Thirteen active ones (whirlwind, cleave,
+concussion with a stun, shadow dash, impale, arcane volley, arrow rain, chain
+lightning, wall of fire, frost nova, poison cloud, healing, barrier) and
+thirteen passive ones. Three active slots plus one passive; the weapon affects
+none of it. A rune's rarity strengthens the effect and shortens the cooldown;
+three identical runes fuse into one of a higher grade.
 
-## Стихии работают друг с другом
+## The elements work with each other
 
-Поджиг, яд и замедление раньше были параллельными таймерами: каждый сам по себе,
-ни один не знал про остальные. Теперь это **метки** — общая валюта, — и встреча
-двух меток даёт третий эффект. Вторая метка не копится поверх первой: они
-схлопываются в реакцию.
+Burning, poison and chill used to be parallel timers: each on its own, none
+aware of the others. Now they are **marks** — a shared currency — and two marks
+meeting produce a third effect. The second mark does not stack on the first:
+they collapse into a reaction.
 
-| Метки | Реакция | Что даёт | Зачем |
+| Marks | Reaction | Effect | Purpose |
 |---|---|---|---|
-| огонь + яд | **Разъедание** | сильный DoT и −30% защиты на 6 сек | урон по одиночной цели |
-| разряд + лёд | **Проводимость** | разряд по трём соседям, метка передаётся | толпа |
-| огонь + лёд | **Пар** | облако: враги внутри не стреляют и не колдуют | защита от стрелков |
-| тяжёлый удар + лёд | **Раскол** | удар по обмороженному бьёт вдвое сильнее | бурст |
+| fire + poison | **Corrosion** | strong DoT and −30% defence for 6 s | single-target damage |
+| shock + ice | **Conduction** | shock arcs to three neighbours, the mark travels | crowds |
+| fire + ice | **Steam** | a cloud: enemies inside cannot shoot or cast | cover from archers |
+| heavy blow + ice | **Shatter** | a hit on a chilled target lands twice as hard | burst |
 
-У каждой реакции своя роль, иначе выбор между ними был бы косметическим. Разряд
-сам по себе добавляет цели +22% получаемого урона, разъедание — ещё +30%.
+Each reaction has its own role, otherwise choosing between them would be
+cosmetic. Shock on its own adds +22% to damage the target takes; corrosion adds
+another +30%.
 
-Метки видно над врагом иконками, у реакции своё имя, цвет и вспышка. Схема целиком
-лежит во вкладке **«Стихии»** в журнале — иначе систему невозможно открыть самому.
+Marks show as icons above the enemy; a reaction has its own name, colour and
+flash. The whole chart lives in the **Elements** tab of the journal — without it
+the system is impossible to discover on your own.
 
-**Реакция на цели имеет внутренний откат 1,2 секунды.** Без него две стихии на
-оружии давали бы реакцию каждым ударом — по 3–5 за убийство, — и связка перестала
-бы быть решением игрока, превратившись в пассивный множитель урона.
+**A reaction on a target has an internal 1.2-second cooldown.** Without it, two
+elements on a weapon would produce a reaction on every hit — three to five per
+kill — and the combination would stop being the player's decision, turning into
+a passive damage multiplier.
 
-Пять пассивных рун читают состояние цели, превращая сбор снаряжения в сборку
-билда: **Пирокинез** (+35% урона по горящим), **Ледяное сердце** (+25% крита по
-обмороженным), **Токсиколог** (яд тикает на 80% чаще), **Катализатор** (реакции
-на 60% сильнее), **Резонанс** (каждая реакция срезает 1,2 сек с откатов).
-Четыре легендарных свойства завязаны на ту же систему: **Клеймо стужи** вешает
-обморожение каждым ударом (раскол и пар без ледяных рун), **Ледолом** удваивает
-раскол, **Громоотвод** добавляет цепи три цели, **Пепельный мор** поджигает всех
-вокруг умершего горящего врага.
+Five passive runes read the target's state, turning gear collection into build
+assembly: **Pyrokinesis** (+35% damage to burning targets), **Ice Heart** (+25%
+crit against chilled ones), **Toxicologist** (poison ticks 80% more often),
+**Catalyst** (reactions 60% stronger), **Resonance** (each reaction cuts 1.2 s
+from cooldowns). Four legendary properties hang off the same system: **Frost
+Brand** applies chill on every hit (shatter and steam without ice runes),
+**Icebreaker** doubles shatter, **Lightning Rod** adds three targets to the
+chain, and **Ash Plague** sets everything around a dying burning enemy alight.
 
-**Враги требуют разной игры.** Щитоносцы держат фронт и доворачивают щит с
-задержкой — заходи сбоку или ломай третьим ударом связки. Латники вдобавок режут
-лёгкие удары. Подрывники раздуваются и взрываются. Шаманы лечат союзников лучом —
-их убивают первыми. Стрелки и заклинатели заставляют сближаться.
+**Enemies demand different play.** Shield bearers hold the front and turn the
+shield with a delay — come from the side or break it with the third blow of the
+combo. Men-at-arms also cut light hits down. Sappers swell and explode. Shamans
+heal allies with a beam — kill them first. Archers and casters force you to
+close the distance.
 
-**Прогрессия** — 4 характеристики (Сила, Выносливость, Ловкость, Разум), по 3 очка
-за уровень. Пять слотов снаряжения, пять степеней редкости, аффиксы с
-масштабируемыми бонусами (вампиризм, поджиг, яд, замедление, крит).
+**Progression** — four stats (Strength, Vitality, Agility, Intellect), three
+points per level. Five gear slots, five rarity grades, affixes with scaling
+bonuses (lifesteal, burn, poison, chill, crit).
 
-**Легендарки — это свойства, а не числа**: Громобой бьёт цепной молнией каждый
-третий удар, Пепельный шаг оставляет за рывком огненный след, Оплот раз в 9 секунд
-гасит удар целиком, Кольцо эха с шансом обнуляет откат умения. Всего десять.
-С третьего ранга броня, шлемы и украшения входят в **комплекты** — Страж Велории,
-Облачение Арканиста, Снаряжение Ловчего, Драконья кладка — с бонусами за 2 и 4 части.
+**Legendaries are properties, not numbers**: Thunderstrike fires chain lightning
+on every third hit, Ashen Step leaves a trail of fire behind a dash, Bulwark
+nullifies one blow entirely every 9 seconds, the Ring of Echoes has a chance to
+reset a skill cooldown. Ten in total. From tier three, armour, helms and
+trinkets belong to **sets** — Guardian of Veloria, Arcanist's Vestments,
+Hunter's Kit, Dragon Clutch — with bonuses at 2 and 4 pieces.
 
-**Кузня Борина** — четыре вкладки.
+**Borin's Forge** — four tabs.
 
-*Ковка*: 37 рецептов по шести рангам — оружие всех шести типов, доспехи и шлемы,
-кольца и амулеты, зелья и свитки. Кованая вещь всегда редкая, с шансом 18% на
-эпическую, то есть заведомо лучше случайного дропа своего ранга. Материалы падают
-с мобов по биомам: железная руда с гоблинов и скелетов, серебряная жила в кряже,
-драконья чешуя с пепельной элиты, осколки пустоты из глубин катакомб.
+*Crafting*: 37 recipes across six tiers — weapons of all six types, armour and
+helms, rings and amulets, potions and scrolls. A crafted item is always rare,
+with an 18% chance of epic, which makes it reliably better than a random drop of
+the same tier. Materials drop from monsters by biome: iron ore from goblins and
+skeletons, silver veins in the ridge, dragon scale from ashen elites, void
+shards from the depths of the catacombs.
 
-*Заточка*: берёшь надетое оружие, кладёшь **три оружия ровно той же редкости** и
-золото. Шанс за попытку задаёт редкость основного: 60% на обычном, 40% на
-необычном, 25% на редком, 14% на эпическом, 8% на легендарном. Успех даёт +12%
-ко всем характеристикам и «+N» к названию, до +8. Пока не взята первая веха,
-**провал сжигает всё, включая само оружие** — кнопка требует второго нажатия и
-подсвечивается красным.
+*Sharpening*: you take your equipped weapon, put in **three weapons of exactly
+the same rarity** and some gold. The chance per attempt comes from the base
+item's rarity: 60% on common, 40% on uncommon, 25% on rare, 14% on epic, 8% on
+legendary. Success gives +12% to all stats and a "+N" in the name, up to +8.
+Until the first milestone is reached, **failure burns everything, including the
+weapon itself** — the button demands a second press and glows red.
 
-**Вехи заточки** — то, ради чего оружие держат дольше двух уровней. Голые проценты
-такой причины не давали: если клинок всё равно сменится к следующему биому, риск
-ничего не стоит и точить можно что угодно.
+**Sharpening milestones** are the reason to keep a weapon for longer than two
+levels. Bare percentages gave no such reason: if the blade is going to be
+replaced by the next biome anyway, the risk costs nothing and you may as well
+sharpen anything.
 
-| Веха | Что даёт |
+| Milestone | What it gives |
 |---|---|
-| **+3** | бонусный аффикс сверх положенных редкости |
-| **+5** | ещё один аффикс и приставка «Закалённый» в названии |
-| **+7** | уникальное легендарное свойство — доступно с **редкого** оружия и выше |
+| **+3** | a bonus affix on top of what the rarity allows |
+| **+5** | another affix and the "Tempered" prefix in the name |
+| **+7** | a unique legendary property — available on **rare** weapons and above |
 
-Вехи ещё и **контрольные точки**: взял +3 — провал больше не рассыпает оружие, а
-откатывает к последней вехе (топливо сгорает всегда). Без этого глубокая заточка
-была арифметически мертва — цепочка «всё или ничего» начиналась заново после
-каждого провала, и до +7 на редком оружии доходил один заход из 68 000. Ниже
-первой вехи правило прежнее: не повезло — рассыпалось всё.
+Milestones are also **checkpoints**: once you have +3, failure no longer
+shatters the weapon but rolls it back to the last milestone (the fuel always
+burns). Without this, deep sharpening was arithmetically dead — the
+all-or-nothing chain started over after every failure, and one run in 68,000
+reached +7 on a rare weapon. Below the first milestone the old rule stands: bad
+luck and it all falls apart.
 
-Сколько топлива уходит в среднем на один успех (симуляция, 120 000 заходов):
+Average fuel spent per success (simulation, 120,000 runs):
 
-| Редкость | до +3 | до +5 | до +7 |
+| Rarity | to +3 | to +5 | to +7 |
 |---|---|---|---|
-| обычное | 27 | 41 | закрыто |
-| необычное | 73 | 99 | закрыто |
-| редкое | 247 | 321 | 362 |
-| эпическое | 1305 | 1446 | 1562 |
+| common | 27 | 41 | closed |
+| uncommon | 73 | 99 | closed |
+| rare | 247 | 321 | 362 |
+| epic | 1305 | 1446 | 1562 |
 
-Отсюда и расклад: хлам точат глубоко, редкое — осторожно. Заточенный до +5
-необычный клинок с двумя лишними аффиксами обгоняет свежую находку своего ранга,
-а +7 на редком — уже проект на весь эндгейм.
+Hence the shape of it: sharpen junk deeply, treat rares carefully. An uncommon
+blade sharpened to +5 with two extra affixes beats a fresh find of its tier, and
++7 on a rare is a whole-endgame project.
 
-Вехи показаны дорожкой прямо на экране заточки: видно и сколько осталось до
-награды, и куда откатит при провале. Аффиксы вех не лезут в название — они
-собраны отдельной строкой «Закалка» в карточке предмета. Заточенное оружие видно
-и на самом герое: с +3 спрайт берётся на ранг выше, с +6 — на два.
+Milestones are shown as a track right on the sharpening screen: you can see both
+how far the reward is and where a failure would drop you. Milestone affixes do
+not crowd into the name — they are gathered in a separate "Tempering" line on the
+item card. A sharpened weapon is visible on the hero too: from +3 the sprite is
+taken a tier higher, from +6 two.
 
-**Уникальные свойства нельзя выковать.** Их либо находят на легендарке, либо
-получают заточкой на +7 — и это единственный способ посадить легендарное
-свойство на оружие, которое ты выбрал сам.
+**Unique properties cannot be forged.** You either find one on a legendary or
+earn it by sharpening to +7 — and that is the only way to put a legendary
+property on a weapon you chose yourself.
 
-*Переплавка*: те же ранг и редкость, но аффиксы бросаются заново. Заточка
-переносится — её оплачивали риском, — и уникальное свойство тоже: иначе
-переплавкой можно было бы за 1300 золота перебирать легендарные свойства,
-обесценивая путь до +7.
+*Reforging*: same tier and rarity, but the affixes are rolled again. Sharpening
+carries over — it was paid for with risk — and so does the unique property:
+otherwise reforging would let you cycle legendary properties for 1300 gold,
+devaluing the road to +7.
 
-*Разбор*: превращает ненужную вещь в материалы. Чем выше ранг и редкость, тем
-ценнее выход — с эпической вещи пятого ранга падает серебро и осколки пустоты.
+*Salvage*: turns an unwanted item into materials. The higher the tier and rarity,
+the better the yield — a tier five epic gives silver and void shards.
 
-## Сюжет
+## The story
+**Twenty-four quests across two acts.** The first leads from slimes on the
+forest edge to the Molten Colossus: four biomes, four bosses, the first descent
+into the catacombs.
 
-**Двадцать четыре задания в двух актах.** Первый ведёт от слизней на опушке до
-Расплавленного Колосса: четыре биома, четыре босса, первый спуск в катакомбы.
+The second act begins where the first ends in victory. The Colossus turned out
+to be a symptom rather than a cause: the cracks did not close, affixed monsters
+grew more numerous than the guild can count, and past floor twenty-five the air
+is different. The chain runs through the alchemist's samples and the guardians
+of the deep — the Void Maw and the Hollow King — to floor forty-five, where it
+turns out that **the Abyss is neither a place nor a beast, but a direction**.
+You can always go down; the only question is who comes back.
 
-Второй акт начинается там, где первый кончается победой. Колосс оказался не
-причиной, а следствием: трещины не закрылись, тварей под аффиксами стало больше,
-чем гильдия успевает считать, а за двадцать пятым этажом воздух другой. Цепочка
-ведёт через пробы алхимика, стражей глубины — Пасть Пустоты и Полого Государя —
-к сорок пятому этажу, где выясняется, что **Бездна не место и не тварь, а
-направление**. Спускаться можно всегда; вопрос только в том, кто вернётся.
+That is what justifies the endless ladder: it has no bottom not because nobody
+got round to building one, but because there is none.
 
-Это и оправдывает бесконечный ладдер: у него нет дна не потому, что до него не
-дошли руки, а потому что дна нет.
+Act two quests give 2.0–2.5 levels of experience each — the same weight as act
+one's bosses.
 
-Задания второго акта дают по 2,0–2,5 уровня опыта каждое — тот же вес, что у
-боссов первого акта.
+**Act three: the Breach.** The Abyss was a direction downwards — and in act three
+it comes out into the open. The ground east of the city has split apart, and
+light comes out of it. Ten quests from level 40 to 52 lead through scouting,
+pale ash and rift glass to the Breach Heart — which guards nothing and strikes
+no one first: it holds the rift open.
 
-**Третий акт: Пролом.** Бездна была направлением вниз — и в третьем акте она
-выходит наружу. Земля к востоку от города разошлась, и оттуда идёт свет.
-Десять заданий с 40-го по 52-й уровень ведут через разведку, бледный пепел и
-стекло разлома к Сердцу Пролома — оно не сторожит и не нападает первым, оно
-держит разлом открытым.
+It had to exceed everything before it in difficulty, and that difficulty is
+built out of **techniques, not health**. That is a direct lesson from the work on
+depth, where we already got "fights stretched out but danger did not grow". So
+almost every inhabitant of the Breach demands something: the Pale Warden holds a
+shield and lets 7 of 100 through on a light hit against 61 on a heavy one; the
+Rift Stalker dodges 22% of blows and flies; the Rift Titan resists knockback and
+carries 0.42 armour; the Pale Smith applies corrosion. And the ground itself
+takes your health.
 
-Он должен превосходить всё предыдущее по сложности, и сложность здесь набрана
-**приёмами, а не здоровьем**. Это прямой урок из работы над глубиной, где мы
-уже один раз получили «бои растягивались, но опасность не росла». Поэтому
-почти каждый обитатель Пролома чего-то требует: Бледный страж держит щит и
-пропускает 7 из 100 лёгким ударом против 61 тяжёлым; Ловчий разлома уклоняется
-от 22% ударов и летает; Титан разлома держит отбрасывание и броню 0.42;
-Бледный кузнец накладывает разъедание. А сама земля отнимает здоровье.
+## Guild business
 
-## Дела гильдии
+**Quests** are a story chain of 24, and alongside them the guild keeps a
+**contract board** to choose from. The generator used to know exactly one shape
+— "kill N of monster X" — and the whole endgame came down to it. There are seven
+kinds now, each tied to a system that had to be built:
 
-**Задания** — сюжетная цепочка из 24 штук, а параллельно гильдия держит **доску
-контрактов** на выбор. Раньше генератор умел ровно одну форму — «убей N
-штук моба X», — и весь конец игры сводился к ней. Теперь семь видов, и каждый
-завязан на систему, которую пришлось построить:
-
-| Вид | Что делать | Награда |
+| Kind | What to do | Reward |
 |---|---|---|
-| **Охота** | 8–16 мобов заданного вида | ×1,0 |
-| **Поставка** | 5–12 единиц материала | ×0,9 |
-| **Заказ кузни** | выковать 2–4 вещи | ×1,3 |
-| **Глубина** | спуститься на несколько этажей ниже личного рекорда | ×1,4 + 3% за этаж |
-| **Стихийник** | вызвать 6–12 реакций одного вида | ×1,6 |
-| **Ловчий** | 3–6 элитных врагов под аффиксами | ×1,9 |
-| **Голова** | убить босса биома | ×2,6 |
+| **Hunt** | 8–16 monsters of a named kind | ×1.0 |
+| **Supply** | 5–12 units of a material | ×0.9 |
+| **Forge order** | craft 2–4 items | ×1.3 |
+| **Depth** | descend several floors below your personal record | ×1.4 + 3% per floor |
+| **Elementalist** | trigger 6–12 reactions of one kind | ×1.6 |
+| **Hunter** | 3–6 affixed elite enemies | ×1.9 |
+| **Head** | kill a biome boss | ×2.6 |
 
-Виды открываются по мере знакомства с системами: контракт про реакции
-бессмыслен тому, кто ещё ни одной не видел, а про глубину — тому, кто не
-спускался. На 5-м уровне гильдия предлагает только охоту и поставку, к 14-му —
-все семь. Один вид не появляется на доске дважды: три одинаковых контракта —
-это не выбор.
+Kinds unlock as you meet the systems: a contract about reactions is meaningless
+to someone who has never seen one, and one about depth to someone who has never
+descended. At level 5 the guild only offers hunts and supply; by 14, all seven.
+The same kind never appears on the board twice: three identical contracts are
+not a choice.
 
-Чем сложнее контракт, тем чаще он платит вещью и тем она лучше: за голову босса
-или глубокий спуск может выпасть легендарка.
+The harder the contract, the more often it pays in an item and the better that
+item is: a boss's head or a deep descent can yield a legendary.
 
-Пока идёт сюжет, контракт висит один и не отвлекает.
+While the story is running, a single contract hangs there and does not distract.
 
-Сохранение автоматическое (localStorage), плюс вручную из меню паузы.
+Saving is automatic (localStorage), plus manual from the pause menu.
 
-## Баланс
+## Balance
 
-Кривые подобраны по симуляции прохождения, а не на глаз.
-Целевые ориентиры и что получилось:
+The curves were fitted from playthrough simulation, not by eye. The targets and
+what came out:
 
-| | цель | факт |
+| | target | actual |
 |---|---|---|
-| Убить рядового моба в своём биоме | 1,5–2,5 с | 1,6–2,3 с |
-| Ударов рядового моба до смерти героя | 7–11 | 7–11 |
-| Убийств на один уровень | 8–25 | 8–19 |
-| Бой с боссом | 10–30 с | 9–29 с |
-| Ударов босса до смерти героя | 6–9 | 6–9 |
+| Kill a regular monster in your biome | 1.5–2.5 s | 1.6–2.3 s |
+| Regular monster hits until the hero dies | 7–11 | 7–11 |
+| Kills per level | 8–25 | 8–19 |
+| Boss fight | 10–30 s | 9–29 s |
+| Boss hits until the hero dies | 6–9 | 6–9 |
 
-Здоровье мобов почти линейно по уровню: квадратичный рост обгонял урон героя и
-растягивал поздние бои втрое. Уровень босса биома привязан к нижней границе
-диапазона, а не к верхней — иначе он оказывался на восемь уровней выше игрока,
-который до него доходит.
+Monster health is nearly linear in level: quadratic growth outran the hero's
+damage and stretched late fights threefold. A biome boss's level is pinned to
+the bottom of the range rather than the top — otherwise it ended up eight levels
+above the player who actually reaches it.
 
-**Стихийная сборка даёт ×1,21 по скорости убийства** — замерено на одном и том же
-мобе, по 40 замеров на вариант, с 3-го по 25-й уровень. Это плата за то, что две
-стихии занимают слоты аффиксов; ломать кривую реакции не должны и не ломают.
-Разъедание надёжнее всего (×1,22–1,59 на одиночной цели), раскол окупается только
-в боях от трёх ударов — то есть против элиты и боссов, — а проводимость на
-одиночной цели не даёт ничего и живёт на толпе: 264 урона по четырём целям,
-469 по семи с Громоотводом. Пар срезает стрелку выстрелы с пяти до нуля.
+**An elemental build gives ×1.21 on kill speed** — measured on the same monster,
+40 measurements per variant, from level 3 to 25. That is the price of two
+elements occupying affix slots; reactions should not break the curve, and they
+do not. Corrosion is the most reliable (×1.22–1.59 on a single target), shatter
+only pays off in fights lasting three hits or more — that is, against elites and
+bosses — and conduction gives nothing on a single target and lives on crowds:
+264 damage across four targets, 469 across seven with the Lightning Rod. Steam
+cuts an archer's shots from five to zero.
 
-### Экономика
+### Economy
 
-Сквозной замер прихода и расхода с 5-го по 40-й уровень вскрыл три перекоса, и
-все три завели контракты гильдии, когда их сделали разнообразными и щедрыми.
+An end-to-end measurement of income and spending from level 5 to 40 exposed
+three distortions, and all three were caused by the guild contracts once they
+were made varied and generous.
 
-**Контракт стоил 37 убитых мобов** и давал 47–72% всего опыта — основной цикл
-игры становился второстепенным, выгоднее было сдавать задания, чем драться.
-Награда урезана втрое: теперь контракт — это стабильно **12–14 мобов золота** и
-34–48% уровня опытом на всей дистанции.
+**A contract was worth 37 killed monsters** and gave 47–72% of all experience —
+the core loop of the game became secondary, and handing in quests paid better
+than fighting. The reward was cut threefold: a contract is now steadily
+**12–14 monsters' worth of gold** and 34–48% of a level in experience across the
+whole distance.
 
-**Приход утраивался за один уровень.** Доска прыгала с одного контракта до трёх
-в момент, когда кончался сюжет, и золото на 25-м уровне росло ×2,6 за шаг.
-Теперь доска растёт по уровню — один контракт, с 14-го два, с 26-го три, — и
-прирост дохода стал ровным: ×1,17–1,47 на всех отрезках.
+**Income tripled within a single level.** The board jumped from one contract to
+three exactly when the story ran out, and gold at level 25 grew ×2.6 in one
+step. The board now grows with level — one contract, two from 14, three from 26
+— and income growth became even: ×1.17–1.47 across every stretch.
 
-**Заточка стоила 1092 золота на любом уровне.** `sharpenCost` считал по редкости
-и числу заточек, но не смотрел на уровень вещи, поэтому эндгеймовый сток к 40-му
-уровню становился бесплатным. Цена привязана к уровню предмета: 1747 → 3713 с
-10-го по 40-й.
+**Sharpening cost 1092 gold at any level.** `sharpenCost` counted rarity and the
+number of sharpenings but never looked at the item's level, so the endgame sink
+became free by level 40. The price is now tied to item level: 1747 → 3713 from
+level 10 to 40.
 
-Аудит нашёл и четвёртое: **с 16-го по 21-й уровень не было ни одного сюжетного
-задания** — примерно 88 убийств, которые держали только контракты. Коэффициентами
-это не чинится, поэтому написан второй акт: максимальный шаг между заданиями стал
-3 уровня вместо 5, а цепочка дотянулась с 24-го уровня до 40-го.
+The audit found a fourth thing: **there was not a single story quest between
+levels 16 and 21** — roughly 88 kills held up by contracts alone. Coefficients
+do not fix that, so act two was written: the largest gap between quests became
+3 levels instead of 5, and the chain stretched from level 24 to 40.
 
-## Структура
+## Layout
 
 ```
 src/
-  main.js            загрузка, масштабирование канваса, игровой цикл
-  game.js            мир, бой, переходы, взаимодействия, сохранение
-  core/              ввод, детерминированный шум, WebAudio-синтез, сейв
-  art/               палитры, пиксельные примитивы, спрайты, тайлы, эффекты, текст
-  world/             биомы, генерация зон, город, подземелье
-  entities/          герой, мобы и их ИИ, снаряды
-  systems/           предметы, умения-руны, легендарки и комплекты, кузня,
-                     стихийные реакции, Бездна и порча, обучение по ходу игры,
-                     отряды, модификаторы подземелья, задания
-  ui/                HUD, меню, виджеты
+  main.js            loading, canvas scaling, the game loop
+  game.js            world, combat, transitions, interactions, saving
+  core/              input, deterministic noise, WebAudio synthesis, saves
+  art/               palettes, pixel primitives, sprites, tiles, effects, text
+  world/             biomes, zone generation, the city, the dungeon
+  entities/          the hero, monsters and their AI, projectiles
+  systems/           items, skill runes, legendaries and sets, the forge,
+                     elemental reactions, the Abyss and corruption, in-play
+                     teaching, packs, dungeon modifiers, quests
+  ui/                HUD, menus, widgets
 ```
 
-Внутреннее разрешение — 480×270, растягивается nearest-neighbour до окна.
-Масштаб берётся максимальный, какой влезает, и подтягивается к целому, только
-если целое рядом (в пределах 6%): на 1920×1080 это ровно ×4 и пиксель в пиксель,
-а на 1366×768 — ×2,84 вместо прежних ×2, где треть окна уходила в чёрные поля.
-Полноэкранный режим — пункт в меню паузы и на титуле; если браузер запрос
-отклонит (так делают встроенные панели), игра скажет об этом, а не промолчит.
-Спрайты собираются из примитивов («бумажная кукла») и запекаются в offscreen-канвасы
-один раз при старте; смена оружия и брони перезапекает героя.
-
-**Герой** — 28×36, фигура 29 пикселей. Размер согласован с горожанами: у NPC
-фигура 24 пикселя, то есть герой выше жителя на голову, а не вдвое, как было
-на промежуточной версии в 47 пикселей.
-
-Силуэт рыцарский: глухой шлем с решётчатым забралом, **светящиеся зелёные
-глаза**, рога, шипы на наплечниках, щит с гербом в свободной руке (только с
-ближним оружием — лучнику он ни к чему). Светящиеся глаза выбраны не для
-красоты: на таком масштабе черты лица не читаются вовсе, а два ярких пятна на
-тёмном фоне узнаются даже когда герой размером с ноготь.
-
-Границы проверены перебором: 980 запечённых кадров (7 рангов × 7 поз ×
-4 направления × 5 фаз) — ни один не выходит за холст.
-
-**Запекание спрайтов идёт в обычной памяти, а не в видеопамяти.** Раньше кадр
-рисовался на GPU-канвасе, а потом дважды вычитывался оттуда — обводка и
-подсветка кромки, каждая со своими `getImageData`/`putImageData`. На 104 кадрах
-героя это 208 выгрузок и заминка **130 мс при каждой смене снаряжения**. Теперь
-кадр рисуется сразу в память, там же обводится и подсвечивается одним проходом,
-и только готовый уходит в видеопамять: **15 мс**, в девять раз быстрее. Стоимость
-кадра при этом не изменилась — 0,30–0,50 мс.
-
-### Камера
-
-Камера держит героя **без отставания**. Пружина, которая была тут раньше,
-казалась мягче, но давала расхождение в доли пикселя между спрайтом и фоном:
-округлялись они независимо, и при ровной ходьбе герой ходил относительно земли
-рывками в 0, 1, 2 и даже −1 пиксель за кадр — экран заметно потряхивало.
-
-Замерено на 140 кадрах ходьбы с плавающим временем кадра: **было ±1 px
-случайно, стало 0 по всем пяти направлениям**, включая диагональ. Фон при этом
-прокручивается только вперёд, шагами 0–1 пиксель.
-
-Порог «догонять пружиной, если далеко» я пробовал и выбросил: на границе
-камера прыгала бы разом на полсотни пикселей — хуже исходной беды. Дальние
-переносы и так ставят камеру напрямую при входе в зону.
-
-Подглядывание за курсором сглаживается отдельно и **округляется до целого**
-перед сложением с позицией камеры: плыть должно оно, а не герой относительно
-земли.
-
-### Два слоя: пиксельный мир, чёткий интерфейс
-
-Игра выводится в 1920×1080. Мир при этом рисуется в 480×270 и растягивается ×4
-без сглаживания — это не «маленькое окно», а способ получить ровный пиксель:
-каждая точка спрайта становится квадратом 4×4.
-
-Интерфейсу такая грубость не нужна и вредна: шрифт в 10 пикселей приходилось
-резать по порогу альфы, отчего `%` слипался с цифрой. Поэтому меню, HUD и
-карточки лежат **отдельным канвасом поверх**, и его буфер равен настоящим
-пикселям экрана — на 1080p это 1920×1080 один к одному.
-
-Координаты интерфейса намеренно **остались прежними**, 480×270. Переписывать
-четыреста вызовов отрисовки на новые числа значило бы переверстать всё заново с
-риском сломать работающее; вместо этого слой растягивается преобразованием.
-Место же берётся не из новых координат, а из шрифта: вектор при той же высоте
-занимает заметно меньше ширины, чем пиксельная имитация с её обязательным
-зазором между знаками, и кегль дополнительно уменьшен на 0,62. Строка
-«Продолжить» была 60 единиц раскладки, стала 34 — панели получили вдвое больше
-места при тех же размерах.
-
-Что осталось пиксельным внутри интерфейса — иконки предметов, руны, миникарта,
-заставка — вставляется через `pixelBlit`: он гасит сглаживание на время
-вставки. Иначе вышло бы мыло вместо пикселей.
-
-**Координата `y` по-прежнему означает верх строки высотой `size`.** Это не
-мелочь: все раскладки писались под пиксельный шрифт, где строка `size: 10`
-занимала ровно десять единиц, и «по центру кнопки» означало `y + (h - 10) / 2`.
-Вектор той же нарицательной высоты занимает 6,2 — и подпись вставала на 1,75
-единицы выше центра, то есть на семь настоящих пикселей при 1080p. Поэтому
-буква центруется внутри прежней коробки, и все четыреста мест остались
-правильными. Замерено по тринадцати подписям на трёх экранах: было 1,75 вверх,
-стало 0,38 — полтора пикселя.
-
-Тот же корень был у цифр на полосах здоровья и маны: там сверх коробки стояла
-рукописная поправка «минус один», подобранная под пиксельный шрифт, а высота
-строки считалась от кегля 8 независимо от высоты полосы — на полосе маны, что
-на две единицы ниже, ошибка была та же. Обе подписи уезжали на 1,13 единицы
-вверх, то есть на четыре с половиной настоящих пикселя. Стало 0,25 — один
-пиксель.
-
-Обводка мелкого текста тоже была взята от пиксельного шрифта: 0,28 кегля. Там
-она рисовалась сдвигом на целый пиксель, для вектора это слишком — у цифры
-высотой пять пикселей обводка съедала форму, и «265» на полосе здоровья
-читалось тёмным пятном. Стало 0,18.
-
-Всплывающая карточка предмета теперь **считает ширину по содержимому**. Раньше
-там стояло 172 — под пиксельный шрифт; с векторным та же карточка превращалась
-в полупустое полотно на пол-экрана. Заодно это снимает вопрос с языками:
-подбирать второе число под английский не придётся.
-
-Замерено: кадр не подорожал (0,55 мс в городе — столько же, сколько до
-переезда), все кнопки на всех экранах ловят курсор, оба языка без
-непереведённых строк.
-
-**Освободившееся место пущено в дело.**
-
-- **Трекер заданий** считает ширину по содержимому. Раньше стояло 140 — под
-  пиксельный шрифт, где «Первая кровь 0/6» занимало почти всю строку. С
-  векторным та же надпись вдвое уже, и жёсткое число превращало трекер в чёрную
-  плашку на четверть ширины экрана ради одной строки.
-- **Полоса умений**: клавиша переехала из подписи под слотом в уголок самого
-  слота, а на остывающем умении показывается остаток в секундах. Подпись снизу
-  была придумана под пиксельный шрифт — кегль 7 читался только потому, что
-  каждый знак был отдельным квадратом. Главное же, чего не хватало, — понимания,
-  сколько ждать: заливка сверху вниз показывает долю, но не время.
-- **Инвентарь**: рядом с надетой вещью теперь видно, что она даёт, — раньше за
-  этим приходилось наводить курсор на каждый слот по очереди. Итог по герою
-  переехал под сетку и развернулся в шесть значений в два столбца.
-- **Лист героя**: летопись переехала в левую колонку под опыт. Правая несла
-  всё подряд — бой, комплекты, летопись, — и **с двумя активными комплектами
-  уезжала за низ панели на двадцать один пиксель**, то есть и за край экрана.
-  Заметить это было трудно: комплекты собираются не раньше середины игры.
-  Заодно левая колонка простаивала снизу на полсотни пикселей, а комплектов
-  теперь показываются все, а не первые два.
-- **Задания**: у списка появилась прокрутка. Её не было, а список обрезался по
-  низу панели: сюжетных заданий двадцать четыре плюс контракты, и всё, что не
-  влезло, было не просто не видно — **выбрать его было нельзя вовсе**, потому
-  что выбор идёт кликом по строке. Замерено на живом сохранении: шестнадцать
-  заданий, видно девять, доходит до последнего; раньше дальше седьмого попасть
-  было невозможно.
-- **Карта** выросла с 268×186 до 296×208 — легенда с векторным шрифтом занимает
-  на четверть меньше ширины. Масштаб зоны считается по меньшей из сторон,
-  поэтому высота важна не меньше ширины: на лесной карте 90×66 пикселей на
-  клетку стало 3,15 вместо 2,8.
-- **Лавка и кузня**: строка ужалась с 26 до 22, лавка выросла до 420×244. На
-  страницу помещается восемь товаров вместо шести и семь рецептов вместо шести
-  — пролистывать на треть меньше.
-- **Кнопки главного экрана** — отдельная «плашка» со срезанными углами,
-  градиентной заливкой и золотой рамкой. Обычная кнопка намеренно простая: её
-  штампуют десятками в списках лавки и кузни, и украшательство там превращается
-  в шум. На титульном экране кнопок ровно три, они лежат на дорогой картинке, и
-  простой прямоугольник с волосяной рамкой рядом с ней выглядел заготовкой.
-  Ширина считается по самой длинной подписи: прежние 120 были подобраны под
-  пиксельный шрифт, и с векторным кнопки раздувались в пустые плиты — почти
-  полтысячи настоящих пикселей ради одного слова. Стало 91.
-- **Полосы здоровья, маны и опыта** — те же приёмы и по той же причине: плоский
-  прямоугольник с плоской заливкой читается как заготовка. Градиент вместо
-  плоского цвета (вверху светлее, внизу темнее — полоса выглядит выпуклой
-  трубкой, а не наклейкой), блик в верхней трети, светлый торец у края заливки
-  (без него граница выглядит обрывом, с ним — краем жидкости, и глаз сразу
-  находит значение), насечки каждые 25% и рамка приглушённым золотом, та же,
-  что у кнопок. На тонкой полосе опыта насечек нет — там это был бы мусор.
-
-  Градиенты и оттенки **кэшируются**. Полос на экране единицы и лежат они на
-  одних местах, но создавать градиент заново каждый кадр вместе с разбором hex
-  в `shade` стоило дорого: кадр в городе поднимался с 0,55 до 0,78 мс. С кэшем
-  0,57 — украшение обошлось в две сотых миллисекунды.
-- **Панель умений** была шестью отдельными квадратами и набором не выглядела.
-  Теперь под ними общая подложка, и панель читается одной вещью — поясом с
-  гнёздами. Гнёзда «утоплены»: у подложки градиент светлее сверху, у гнезда —
-  наоборот, снизу, и от этой встречной растяжки гнездо кажется углублением, а
-  не наклейкой поверх. При нехватке маны золото рамки краснеет. На остывающем
-  умении появилась светлая кромка по границе заливки — по ней видно, что откат
-  идёт, а не завис.
-
-  **На поясе только то, что действительно вставлено.** Раньше гнёзда рун
-  рисовались всегда — все три, занятые и пустые. До первой руны пояс был
-  наполовину пустым, а дальше показывал ровно то, чего у игрока ещё нет: два
-  тёмных квадрата с буквами R и G, обещающих умение, которого не существует.
-  Теперь пустые гнёзда не рисуются, пояс сжимается по содержимому (от трёх
-  гнёзд до шести) и остаётся посередине. Куда вставлять руны, объясняет
-  подсказка при выпадении первой и вкладка «Инвентарь», где слоты F/R/G видны
-  всегда — держать ради этого дырки поверх игры незачем.
-
-  Удар, рывок и зелье остаются на поясе всегда: это не снаряжение, а то, что у
-  героя есть с первой минуты. Гнездо зелий не исчезает и на нуле — счётчик
-  краснеет: пропади оно посреди боя, вместе с ним пропала бы и сама весть
-  «зелья кончились», а пояс прыгнул бы под рукой.
-
-  **Надетое — вторым ярусом того же пояса.** В строку оно не влезало: миникарта
-  занимает справа x 404…472 на той же высоте, а шесть умений с шестью вещами в
-  ряд — это 329 единиц, край панели упёрся бы в неё. Вверх места сколько угодно,
-  поэтому вещи легли ярусом выше умений, и пояс остался прежней ширины (максимум
-  202 единицы против 404 у миникарты).
-
-  Ярусы разные по смыслу и потому разные по виду: у нижнего гнёзда 28 единиц и
-  ярлык клавиши — на них нажимают; у верхнего 20 и никаких ярлыков — на него
-  смотрят. Между ними золотая нить. Вещи рисуются тем же `itemSlot`, что в
-  инвентаре, поэтому редкость, уголки эпических, метка комплекта и ступень
-  заточки видны прямо в бою, не открывая журнал. Пустых гнёзд нет и здесь: ряд
-  собирается из надетого, а когда не надето ничего — исчезает целиком, и пояс
-  сжимается обратно в один ярус.
-
-  Пояс подрос с 40 единиц до 64, и всё, что жалось к низу экрана, стало
-  отсчитываться от его верхней кромки (`hud.beltTop`), а не от края: подсказка
-  действия и тосты уехали бы под него. Заодно ушло старое наложение — панель
-  «E — поговорить» на три пикселя залезала на пояс и до этой правки.
-
-- **Трекер заданий** получил ту же подложку и вдобавок **тень**. Панели HUD
-  лежат прямо на мире, а не на затемнённом фоне, и без тени панель читается
-  дырой в картинке, а не предметом поверх неё. Под заголовком золотая нить с
-  растворяющимися концами: сплошная линия читалась бы разделителем в таблице,
-  эта — отделкой. Слева у каждой строки ромбик состояния — тот же знак, что в
-  журнале заданий, чтобы не приходилось запоминать два.
-
-- **Миникарта** обрезается по той же фаске, что и оправа: иначе на скосе торчал
-  бы прямой угол картинки. К краям карта гаснет виньеткой и не обрывается по
-  рамке ножом (замер по строке: 88 в центре, 61 у края). Название зоны переехало
-  с подписи в воздухе на язычок поверх верхней грани — заодно освободило строку,
-  и карта выросла с 62 до 68.
-
-  **Герой на ней больше не точка, а стрелка по направлению взгляда.** Точка
-  говорит только «ты здесь»; стрелка отвечает ещё и на «куда ты смотришь» — на
-  миникарте это половина пользы, потому что по ней ориентируются, не глядя на
-  мир. Метки целей стали ромбиками с тёмной обводкой (читаются на любой карте),
-  у босса — пульсирующий ореол.
-
-- **Карта в журнале**: оправа теперь садится по самой карте, а не наоборот.
-  Раньше место под карту было прямоугольником 296×208, зона вписывалась в него
-  по меньшей стороне — и по бокам оставались чёрные поля. В городе это полтора
-  десятка пикселей с каждой стороны, в подземелье — четырнадцать. Теперь
-  считается, сколько карта займёт на самом деле, и рамка рисуется ровно по ней:
-  полей нет ни при какой форме зоны, а масштаб прежний. Плюс виньетка, чертёжные
-  уголки, ромбики в легенде вместо квадратиков и та же стрелка героя, что на
-  миникарте — один знак в двух местах не заставляет учить два.
-
-- **Инвентарь** переделан целиком — от иконки предмета до сводки внизу.
-
-  **Иконка выросла с 16 пикселей до 20.** Причина не в красоте ради красоты:
-  ячейка рюкзака 26×26, и шестнадцатипиксельная картинка тонула в ней с полем в
-  пять пикселей по кругу. Двадцать — это в полтора раза больше площади, и в них
-  наконец помещается то, на что не хватало места: сужение клинка, огранка
-  камня, обмотка рукояти, фаска на кирасе. Свет во всех иконках один — сверху
-  слева; когда у одного предмета блик слева, а у соседнего справа, сетка
-  начинает рябить, и вещи перестают различаться по силуэту. В мелких ячейках
-  (лавка, кузня) иконка ужимается до 15 единиц — ровно втрое от пикселя иконки
-  на слое интерфейса, любой другой размер дал бы пиксели разной ширины.
-
-  **Ячейка стала гнездом.** Плоская заливка с рамкой в пиксель читалась как
-  ячейка таблицы: вещи лежали «на бумаге». Теперь тёмная кромка сверху, светлая
-  снизу — предмет внутри, а не поверх. Под иконкой контактная тень: без неё
-  предмет висит в воздухе, и никакая оправа этого не исправит. Редкость несёт
-  три знака сразу — цвет оправы, свечение изнутри и уголки у эпических и
-  легендарных: синее от фиолетового на тёмном фоне на просвет не отличить, а
-  «есть уголки / нет» видно боковым зрением, не вчитываясь.
-
-  **Строки снаряжения** получили плиты с ребром по редкости слева — список
-  читается по цветной кромке сверху вниз, не разбирая букв. Название слота
-  уехало вправо мелкими капителями и освободило строку под характеристики.
-  **Рюкзак** лежит в нише (`recess` — обратная сторона `hudPlate`: тень сверху
-  вместо света, и сетка выглядит вставленной в панель, а не наклеенной).
-  **«Итог»** — на плите с золотой нитью, мощь вынесена на отдельный язычок: это
-  единственное число, по которому сравнивают два комплекта целиком, и в общем
-  столбике оно терялось между «крит. шансом» и «сниж. урона». К числам ведут
-  выносные точки, чтобы глаз не терял строку.
-
-- **Лавка, кузня и остальные экраны** доведены до того же вида — но не по
-  одному, а через три общие заготовки. Двенадцать списков рисовали себе фон
-  сами: `fillRect` на три процента белого и полоска слева. Одинаковый код в
-  двенадцати местах — и, что хуже, чуть разный вид в каждом.
-
-  - **`listRow`** — строка списка: фаска, встречный градиент, ребро слева и
-    золотая рамка при наведении. Ребро несёт либо редкость, либо состояние:
-    в ковке серое значит «рано по уровню», зелёное — «хватает всего», красное —
-    «чего-то нет». Теперь на ней лавка, все четыре вкладки кузни, слияние рун,
-    задания, записи, реакции, характеристики героя, выбор перехода и
-    снаряжение в инвентаре.
-  - **`segTabs`** — переключатель разделов: сегменты в утопленной дорожке,
-    активный поднят и подсвечен золотом. Раньше вкладки лавки были теми же
-    кнопками, что «Купить» в строке товара, и не читалось, что одно листает
-    страницу, а другое тратит золото.
-  - **`valueTab`** — язычок под число: золото в лавке, цена в строке, мощь в
-    инвентаре, награда за дверь. Красный вариант — когда не хватает.
-
-  По дороге: `plateButton` научился `disabled` и `danger` (плашки заменили
-  простые кнопки в диалогах, на алтаре и в подтверждениях — там есть и
-  недоступные ответы, и необратимые действия); у пустых списков появилось
-  внятное состояние с подсказкой «что делать» вместо серой строчки посреди
-  пустоты; разговор получил тень и портрет в нише, экран смерти — полосу во всю
-  ширину вместо текста в пустоте, двери спуска — плиты с оправой по цене риска,
-  алтарь — две равные чаши весов вместо двух строчек подряд.
-
-  Одна накладка вылезла сразу: язычок заголовка панели занимает `py-6…py+6`, и
-  новые ряды вкладок в него упирались — ряды уехали ниже, в кузне их теперь три
-  яруса (раздел → категория → тип оружия).
-
-Фаска у кнопок, полос, гнёзд, панелей и обеих карт одна и та же (`bevelPath`):
-повторение одной детали связывает разные части интерфейса сильнее, чем общий
-цвет.
-Градиенты у всех идут через один кэш (`vgrad`) — иначе каждая новая
-украшенная панель добавляла бы к кадру свою десятую миллисекунды.
-
-### Вход через кошелёк
-
-На титульном экране появился вход через Phantom. Что при этом происходит:
-страница спрашивает у расширения публичный ключ и просит подписать **текст**;
-расширение показывает этот текст игроку своим окном и подписывает его закрытым
-ключом, который никогда не покидает кошелёк. Игре достаются публичный ключ и
-подпись — и только они.
-
-Чего не происходит: игра **никогда** не спрашивает seed-фразу, не запрашивает
-закрытый ключ и не зовёт `signTransaction`. Вход — это подпись текста, а не
-перевод средств. Подписываемое сообщение намеренно читаемое: домен, назначение,
-одноразовый код, время. Подписать «непонятные байты» — худшая привычка, которую
-можно привить игроку, потому что ровно так уводят средства.
-
-**Чем это пока не является.** Подпись имеет смысл только тогда, когда её
-проверяет сервер: ed25519 против публичного ключа и одноразового числа, которое
-выдал он же. Сервера ещё нет, одноразовое число рождается на клиенте, и подпись
-никем не проверяется — то есть это удобный способ назваться, но не
-доказательство: подменить ответ кошелька в консоли может кто угодно. Места,
-обязанные переехать на сервер, отмечены в коде пометкой `СЕРВЕР`.
-
-Гостевой вход оставлен намеренно. Без него игра перестала бы запускаться у всех,
-у кого нет расширения, — а это большая часть тех, кто открыл ссылку впервые.
-
-Разобраны по смыслу и три исхода: кошелька нет — предлагаем установить;
-игрок отменил подпись — это не ошибка и не должно выглядеть сбоем; всё
-прочее — настоящая неудача с внятной строкой. Вход переживает перезагрузку
-страницы неделю, дальше просим войти заново.
-
-### Движение в сети: как сошлось предсказание
-
-Клиент двигает героя сразу, не дожидаясь сервера, а потом сверяется. Сначала
-сверка срабатывала на трети вводов с расхождением до 26 пикселей — героя мелко
-дёргало. Разбор занял три подхода, и каждый оказался поучительным.
-
-**Подозрение первое: сервер не знает героя.** В комнате лежала заглушка с
-зашитой скоростью 64,25 и сотней здоровья — для героя 35-го уровня это неправда.
-Сервер научился поднимать настоящего `Player` из базы тем же `fromJSON`, что и
-клиент (ради этого `reviveItem` переехал из `game.js` в `systems/items.js` — это
-правило про предметы, ему место рядом с предметами). Расхождение **не
-изменилось**: 33%, 26 px. Характеристики были ни при чём.
-
-**Настоящая причина: разная частота интегрирования.** Формула шага одна и та же,
-но клиент считает её шестьдесят раз в секунду, а сервер двадцать. Пошаговое
-интегрирование при разном шаге даёт разные координаты — всегда. Теперь клиент
-шлёт **сами шаги** вместе с их `dt`, а сервер их проигрывает: обе стороны считают
-одну последовательность, а не одну формулу с разным шагом.
-
-Результат: **26 px → 3,3 px**, а в покое стороны расходятся на 0,7 пикселя —
-это округление снимка до десятых.
-
-**Побочный эффект: дыра в защите.** Раз клиент присылает время, он может
-прислать его сколько угодно. Первая версия ограничения давала надбавку на каждое
-сообщение — и проверка показала, что так проходит ускоритель в два с половиной
-раза: 153 пикселя в секунду вместо 64. Заменено на ведро времени: бюджет
-копится по настоящим часам, тратится шагами, потолок — четверть секунды на
-дрожание сети. Три поддельных клиента с разной частотой и длиной шагов получают
-те же 57 px/с, что и честный.
-
-**И два раза я обманул сам себя замером.** Сначала гонял `update` в цикле с
-пятимиллисекундными паузами — игра шла втрое быстрее реального времени, сервер
-справедливо резал лишнее, и защита выглядела как поломка предсказания. Потом
-звал `update` поверх работающего цикла страницы — игра шла вдвое быстрее.
-Честные числа получаются, только когда игру двигает её собственный цикл, а
-замер лишь смотрит со стороны.
-
-### Вода
-
-Пруд выглядел лужей краски, и первым делом я решил, что вода вовсе не
-анимирована. Это было неверно: `drawLiquidShimmer` существует и вызывается —
-блики бегают, свечение пульсирует. Не хватало другого.
-
-- **Глубины.** Вода всюду одного цвета: и на мели, и посередине. Теперь клетки,
-  у которых все четыре соседа — вода, темнеют. У пруда появилось дно, у берега —
-  мель.
-- **Пены по всем берегам.** Полоска прибоя бежала только там, где земля сверху;
-  с трёх сторон из четырёх пруд обрывался ничем. Кромка — это то, по чему глаз
-  читает, где кончается вода.
-
-Пену пришлось переделать дважды. Сплошная полоса во всю клетку складывалась с
-соседними в непрерывный контур, и пруд получал обводку: не берег, а ступенчатый
-прямоугольник вокруг воды. Теперь на каждую сторону приходится по два коротких
-штриха со своей фазой — кромка рвётся, и читается как прибой, а не как рамка.
-
-Стоило это нисколько: клеток жидкости в зоне около трёх сотен, кадр у воды —
-1,06 мс.
-
-### Тени: почему мир выглядел плоским
-
-Претензия «предметы не стоят на земле, а наклеены на неё» проверяется числом, а
-не глазом. Способ: отрисовать один и тот же кадр дважды — с тенями и с `sun.a =
-0` — и вычесть одно из другого. Тогда видно ровно то, что даёт тень, без примеси
-травы, земли и всего остального.
-
-Оказалось: **направленная тень задевала 4,1% кадра и темнила его на 6%.** Тень
-была, но её не было видно.
-
-Исправлено тремя правками: тень длиннее и плотнее (`a` 0,26 → 0,40); у неё
-появился мягкий край — силуэт рисуется дважды, шире и бледнее плюс основной,
-потому что резко обрезанная тень читается вырезанной из бумаги, а размытие в
-канвасе стоит дорого; и под крупные объекты подкладывается пятно затенения по
-их footprint. Последнее особенно важно для деревьев: у спрайта есть своя
-запечённая тень, но у кроны шириной 66 пикселей это мазок в 18 — для травинки в
-самый раз, для дерева нет.
-
-Стало: **9,6% кадра, 7,7% затемнения, самая тёмная точка −116 вместо −54.**
-Цена — 0,35 мс на кадр из 16,7 доступных.
-
-### Свет: пятна, которые пришлось переставить дважды
-
-Второй половиной задумывались солнечные пятна сквозь крону — ровно освещённая
-поляна выглядит так, будто над ней ничего не растёт. Первый заход был
-**откачен**: замощение шумом поверх всего экрана даёт видимую сетку повторов —
-на 480 пикселях ширины плитка в 128 укладывается четыре раза, и глаз мгновенно
-ловит решётку (на воде она читалась прямоугольниками). Прибавка при этом вышла
-мизерная: разброс яркости по кадру вырос на 5%. Менять заметную сетку на пять
-процентов — плохая сделка.
-
-Сделано иначе: пятна строятся **из самих крон** и живут в мировых координатах.
-Повторяться нечему — нет ни плитки, ни экранной сетки. Разброс берётся из хэша
-по номеру, а не из `Math.random`: зона лежит в кэше и перерисовывается тысячи
-раз, пятна при этом не должны прыгать.
-
-Второй заход тоже пришлось переделать. Сперва пятно клалось точно в тень кроны
-— физически верно: свет идёт сбоку, и всё пробившееся сквозь листву падает
-туда же, куда легла тень. Замер сказал, что это не работает: **1,8% кадра,
-разброс яркости 37,06 → 36,99**, то есть ничего. В этой камере тень кроны
-закрыта самими спрайтами деревьев, и пятно попадало под них. Игрок видит землю
-**между** кронами и перед ними — свет должен ложиться туда. Разброс расширен
-почти во всю крону и смещён вниз по экрану, к камере.
-
-Мягкий колокол читался размывом — «где-то посветлее». У пятна света должен быть
-край: солнце сквозь листву даёт кляксу, а не туман. Ядро градиента держится до
-0,82 радиуса и только потом падает; после этого средняя прибавка яркости выросла
-с 15 до 24, ярчайшая точка — с 79 до 121.
-
-Пятна ползают вместе с кроной: щели в листве двигает то же поле ветра, что
-качает само дерево, — иначе свет стоит, а дерево ходит.
-
-| биом | сила | пятен в зоне | задето кадра | средняя прибавка |
+The internal resolution is 480×270, stretched nearest-neighbour to the window.
+The scale takes the largest that fits and snaps to a whole number only when a
+whole number is close (within 6%): on 1920×1080 that is exactly ×4, pixel for
+pixel, and on 1366×768 it is ×2.84 instead of the old ×2, where a third of the
+window went to black bars. Fullscreen is an entry in the pause menu and on the
+title screen; if the browser refuses the request (embedded panels do), the game
+says so rather than staying silent. Sprites are assembled from primitives (a
+"paper doll") and baked into offscreen canvases once at startup; changing weapon
+or armour re-bakes the hero.
+
+**The hero** is 28×36, a 29-pixel figure. The size is matched to the townsfolk:
+an NPC figure is 24 pixels, so the hero is a head taller than a citizen rather
+than twice their size, as in an intermediate 47-pixel version.
+
+The silhouette is knightly: a closed helm with a grilled visor, **glowing green
+eyes**, horns, spiked pauldrons, a heraldic shield in the free hand (only with
+melee weapons — an archer has no use for it). The glowing eyes were not chosen
+for looks: at this scale facial features do not read at all, while two bright
+spots on a dark field are recognisable even when the hero is the size of a
+fingernail.
+
+The bounds were checked exhaustively: 980 baked frames (7 tiers × 7 poses ×
+4 directions × 5 phases) — not one leaves the canvas.
+
+**Sprite baking happens in ordinary memory, not in video memory.** A frame used
+to be drawn on a GPU canvas and then read back from it twice — the outline and
+the rim light, each with its own `getImageData`/`putImageData`. Across the
+hero's 104 frames that is 208 read-backs and a **130 ms stall on every gear
+change**. Now the frame is drawn straight into memory, outlined and rim-lit
+there in one pass, and only the finished result goes to video memory: **15 ms**,
+nine times faster. The per-frame cost did not change — 0.30–0.50 ms.
+
+### The camera
+
+The camera holds the hero **without lag**. The spring that used to be here felt
+softer but produced a sub-pixel disagreement between sprite and background: they
+rounded independently, and during steady walking the hero moved relative to the
+ground in jerks of 0, 1, 2 and even −1 pixel per frame — the screen visibly
+shivered.
+
+Measured across 140 frames of walking with a varying frame time: **it was ±1 px
+at random, it is now 0 in all five directions**, diagonals included. The
+background meanwhile scrolls forward only, in steps of 0–1 pixel.
+
+I tried a "catch up with a spring if far away" threshold and threw it out: at the
+boundary the camera would jump fifty pixels at once — worse than the original
+problem. Long-distance transfers already place the camera directly on zone entry.
+
+The peek towards the cursor is smoothed separately and **rounded to whole
+pixels** before being added to the camera position: it is the peek that should
+drift, not the hero relative to the ground.
+
+### Two layers: a pixel world, a crisp interface
+
+The game outputs at 1920×1080. The world is drawn at 480×270 and stretched ×4
+without smoothing — this is not a "small window" but a way to get an even pixel:
+every point of a sprite becomes a 4×4 square.
+
+The interface neither needs nor benefits from that coarseness: a 10-pixel font
+had to be cut by an alpha threshold, which made `%` stick to the digit before it.
+So menus, HUD and cards live on **a separate canvas on top**, whose buffer equals
+the real screen pixels — on 1080p that is 1920×1080 one to one.
+
+Interface coordinates deliberately **stayed the same**, 480×270. Rewriting four
+hundred draw calls to new numbers would mean re-laying out everything from
+scratch with a risk of breaking what works; instead the layer is stretched by a
+transform. The space, though, comes not from new coordinates but from the font:
+at the same height a vector glyph takes noticeably less width than a pixel
+imitation with its mandatory gap between characters, and the size is reduced by
+a further 0.62. The string "Continue" was 60 layout units, it is now 34 — panels
+gained twice the room at the same dimensions.
+
+Whatever stays pixel art inside the interface — item icons, runes, the minimap,
+the title art — is drawn through `pixelBlit`, which turns smoothing off for the
+duration. Otherwise it would be mush instead of pixels.
+
+**The `y` coordinate still means the top of a line of height `size`.** That is
+not a detail: every layout was written for the pixel font, where a `size: 10`
+line occupied exactly ten units, and "centred in the button" meant
+`y + (h - 10) / 2`. A vector glyph of the same nominal height occupies 6.2 — and
+the label ended up 1.75 units above centre, which is seven real pixels at 1080p.
+So the letter is centred inside the old box, and all four hundred places stayed
+correct. Measured across thirteen labels on three screens: it was 1.75 up, it is
+now 0.38 — a pixel and a half.
+
+The numbers on the health and mana bars had the same root: there, on top of the
+box, sat a hand-written "minus one" correction tuned to the pixel font, and the
+line height was computed from size 8 regardless of the bar's height — on the mana
+bar, two units shorter, the error was identical. Both labels drifted 1.13 units
+up, four and a half real pixels. Now it is 0.25 — one pixel.
+
+The outline on small text was also inherited from the pixel font: 0.28 of the
+size. There it was drawn as a whole-pixel offset; for vector text that is too
+much — on a digit five pixels tall the outline ate the shape, and "265" on the
+health bar read as a dark blob. It is now 0.18.
+
+The item tooltip now **sizes its width to its contents**. It used to be a hard
+172, tuned for the pixel font; with vector text the same card became a half-empty
+sheet across half the screen. That also settles the question of languages: there
+is no second number to tune for English.
+
+Measured: the frame did not get more expensive (0.55 ms in the city, the same as
+before the move), every button on every screen catches the cursor, and both
+languages have no untranslated strings.
+
+**The freed space was put to use.**
+
+- **The quest tracker** sizes its width to its contents. It used to be a hard 140,
+  tuned for the pixel font where "First Blood 0/6" filled almost the whole line.
+  With vector text the same label is half as wide, and the fixed number turned
+  the tracker into a black slab a quarter of the screen wide for one line of text.
+- **The skill belt**: the key moved from a caption under the slot into the corner
+  of the slot itself, and a cooling skill shows the remaining seconds. The caption
+  underneath was designed for the pixel font — size 7 was legible only because
+  every glyph was a separate square. What was really missing was knowing how long
+  to wait: a top-down fill shows the fraction but not the time.
+- **The inventory**: next to an equipped item you can now see what it gives — you
+  previously had to hover each slot in turn. The hero's totals moved under the
+  grid and unfolded into six values in two columns.
+- **The character sheet**: the chronicle moved to the left column under
+  experience. The right one carried everything — combat, sets, chronicle — and
+  **with two active sets it ran twenty-one pixels past the bottom of the panel**,
+  that is, off the screen. This was hard to notice: sets are not completed before
+  the middle of the game. The left column was meanwhile idle for fifty pixels at
+  the bottom, and all sets are now shown rather than the first two.
+- **Quests**: the list gained scrolling. It had none, and the list was cut off at
+  the bottom of the panel: there are twenty-four story quests plus contracts, and
+  everything that did not fit was not merely invisible — **it could not be
+  selected at all**, because selection is a click on a row. Measured on a live
+  save: sixteen quests, nine visible, reachable to the last; previously nothing
+  past the seventh could be reached.
+- **The map** grew from 268×186 to 296×208 — the legend in vector text takes a
+  quarter less width. Zone scale is computed from the smaller side, so height
+  matters as much as width: on a forest map that is 90×66 pixels on
+  a tile instead of 2.8.
+- **The shop and the forge**: the row shrank from 26 to 22, the shop grew to
+  420×244. Eight goods fit on a page instead of six, and seven recipes instead of
+  six — a third less scrolling.
+- **Title screen buttons** are a separate "plate" with cut corners, a gradient
+  fill and a gold frame. The ordinary button is deliberately plain: it is stamped
+  out by the dozen in shop and forge lists, and decoration there turns into
+  noise. On the title screen there are exactly three buttons, they sit on an
+  expensive picture, and a plain rectangle with a hairline frame next to it
+  looked like a placeholder. Width is computed from the longest label: the old
+  120 was tuned for the pixel font, and with vector text the buttons swelled into
+  empty slabs — almost five hundred real pixels for one word. It is now 91.
+- **The health, mana and experience bars** — the same techniques for the same
+  reason: a flat rectangle with a flat fill reads as a placeholder. A gradient
+  instead of a flat colour (lighter at the top, darker at the bottom — the bar
+  looks like a rounded tube rather than a sticker), a highlight in the upper
+  third, a bright cap at the edge of the fill (without it the boundary looks like
+  a cliff, with it like the edge of a liquid, and the eye finds the value at
+  once), notches every 25% and a frame in muted gold, the same as on the buttons.
+  The thin experience bar has no notches — there they would be litter.
+
+  Gradients and shades are **cached**. There are only a handful of bars on screen
+  and they sit in fixed places, but creating a gradient anew every frame together
+  with parsing hex in `shade` was expensive: the frame in the city rose from 0.55
+  to 0.78 ms. With the cache, 0.57 — the decoration cost two hundredths of a
+  millisecond.
+- **The skill panel** was six separate squares and did not look like a set. Now
+  they share a backing plate, and the panel reads as one thing — a belt with
+  sockets. The sockets are "sunken": the plate's gradient is lighter at the top,
+  the socket's is lighter at the bottom, and that opposing stretch makes the
+  socket look like a recess rather than a sticker on top. When mana is short the
+  frame's gold turns red. A cooling skill gained a bright edge along the fill
+  boundary — you can see the cooldown is running rather than stuck.
+
+  **Only what is actually slotted appears on the belt.** Rune sockets used to be
+  drawn always — all three, filled and empty. Before the first rune the belt was
+  half empty, and after that it showed exactly what the player does not have yet:
+  two dark squares lettered R and G, promising a skill that does not exist. Empty
+  sockets are no longer drawn, the belt shrinks to its contents (from three
+  sockets to six) and stays centred. Where to put runes is explained by the hint
+  on the first rune drop and by the Inventory tab, where the F/R/G slots are
+  always visible — there is no reason to keep holes over the game for that.
+
+  Attack, dash and potion stay on the belt always: they are not equipment but
+  what the hero has from the first minute. The potion socket does not disappear
+  at zero either — the counter turns red: were it to vanish mid-fight, the very
+  news "out of potions" would vanish with it, and the belt would jump under your
+  hand.
+
+  **Equipment is the second tier of the same belt.** It did not fit in one row:
+  the minimap occupies x 404…472 on the right at the same height, and six skills
+  plus six items in a row is 329 units — the panel's edge would run into it.
+  There is unlimited room upwards, so the items went on a tier above the skills,
+  and the belt kept its width (202 units at most against the minimap's 404).
+
+  The tiers differ in meaning and therefore in look: the lower has 28-unit
+  sockets and a key label — you press those; the upper has 20 and no labels — you
+  look at those. A gold thread runs between them. Items are drawn with the same
+  `itemSlot` as the inventory, so rarity, the corners on epics, the set mark and
+  the sharpening level are visible right in combat without opening the journal.
+  There are no empty sockets here either: the row is assembled from what is worn,
+  and when nothing is worn it disappears entirely and the belt collapses back to
+  one tier.
+
+  The belt grew from 40 units to 64, and everything that hugged the bottom of the
+  screen now measures from its top edge (`hud.beltTop`) rather than from the
+  screen edge: the action prompt and the toasts would have gone underneath it.
+  That also removed an old overlap — the "E — talk" panel had been three pixels
+  over the belt even before this change.
+
+- **The quest tracker** got the same backing plate and, in addition, **a shadow**.
+  HUD panels lie directly on the world rather than on a dimmed background, and
+  without a shadow a panel reads as a hole in the picture rather than an object on
+  top of it. Under the heading runs a gold thread with dissolving ends: a solid
+  line would read as a table separator, this one reads as trim. On the left of
+  each row is a state diamond — the same sign as in the quest journal, so nobody
+  has to memorise two.
+
+- **The minimap** is clipped along the same bevel as its frame: otherwise a
+  square corner of the image would poke out at the chamfer. Towards the edges the
+  map fades with a vignette instead of being cut off by the frame like a knife
+  (measured along a row: 88 in the centre, 61 at the edge). The zone name moved
+  from a caption floating in the air onto a tab over the top edge — which also
+  freed a line, and the map grew from 62 to 68.
+
+  **The hero on it is no longer a dot but an arrow pointing where he looks.** A
+  dot only says "you are here"; an arrow also answers "which way are you facing"
+  — on a minimap that is half the value, because people navigate by it without
+  looking at the world. Objective markers became diamonds with a dark outline
+  (legible on any map), and the boss has a pulsing halo.
+
+- **The journal map**: the frame now fits the map rather than the other way
+  round. The space for the map used to be a 296×208 rectangle, the zone was fitted
+  into it by its smaller side — and black bars were left at the sides. In the city
+  that is a dozen and a half pixels on each side, in the dungeon fourteen. Now it
+  computes how much the map will actually take and draws the frame exactly around
+  it: no bars for any zone shape, and the same scale. Plus a vignette, draughtsman's
+  corners, diamonds in the legend instead of little squares, and the same hero
+  arrow as on the minimap — one sign in two places does not make you learn two.
+
+- **The inventory** was rebuilt entirely — from the item icon to the summary at
+  the bottom.
+
+  **The icon grew from 16 pixels to 20.** The reason is not beauty for its own
+  sake: a bag cell is 26×26, and a sixteen-pixel picture drowned in it with a
+  five-pixel margin all round. Twenty is one and a half times the area, and it
+  finally fits what there was no room for: the taper of a blade, the facets of a
+  gem, the wrapping on a hilt, the chamfer on a cuirass. The light in every icon
+  comes from one place — top left; when one item has its highlight on the left and
+  its neighbour on the right, the grid starts to shimmer and items stop being
+  distinguishable by silhouette. In small cells (shop, forge) the icon shrinks to
+  15 units — exactly three times the icon's pixel on the interface layer; any
+  other size would give pixels of differing width.
+
+  **The cell became a socket.** A flat fill with a one-pixel frame read as a table
+  cell: items lay "on paper". Now there is a dark edge on top and a light one
+  below — the item is inside, not on top. Under the icon is a contact shadow:
+  without it the item hangs in the air, and no frame fixes that. Rarity carries
+  three signs at once — the frame colour, a glow from within, and corners on epics
+  and legendaries: blue from purple on a dark background cannot be told apart in
+  passing, whereas "has corners / has none" is visible in peripheral vision
+  without reading.
+
+  **Equipment rows** got plates with a rarity edge on the left — the list reads by
+  its coloured edge from top to bottom without parsing letters. The slot name
+  moved right in small caps and freed the line for stats. **The bag** sits in a
+  recess (`recess` — the reverse of `hudPlate`: shadow on top instead of light, so
+  the grid looks set into the panel rather than glued onto it). **"Totals"** sits
+  on a plate with a gold thread, with power on a separate tab: it is the single
+  number by which two loadouts are compared as a whole, and in a common column it
+  was lost between "crit chance" and "damage reduction". Leader dots run to the
+  numbers so the eye does not lose the row.
+
+- **The shop, the forge and the other screens** were brought to the same look —
+  but not one by one: through three shared building blocks. Twelve lists drew
+  their own background: a `fillRect` at three per cent white and a strip on the
+  left. The same code in twelve places — and, worse, a slightly different look in
+  each.
+
+  - **`listRow`** — a list row: a bevel, an opposing gradient, an edge on the left
+    and a gold frame on hover. The edge carries either rarity or state:
+    in crafting, grey means "too early by level", green "you have everything",
+    red "something is missing". It is now used by the shop, all four forge tabs,
+    rune fusing, quests, notes, reactions, hero stats, the travel picker and the
+    equipment list in the inventory.
+  - **`segTabs`** — a section switcher: segments in a sunken track, the active one
+    raised and lit in gold. The shop tabs used to be the same buttons as "Buy" in
+    a goods row, and it did not read that one turns a page while the other spends
+    gold.
+  - **`valueTab`** — a tab for a number: gold in the shop, price in a row, power
+    in the inventory, the reward on a door. The red variant means you are short.
+
+  Along the way: `plateButton` learned `disabled` and `danger` (plates replaced
+  plain buttons in dialogues, at the altar and in confirmations — those have both
+  unavailable answers and irreversible actions); empty lists gained a proper
+  state with a "what to do" hint instead of a grey line in the middle of nowhere;
+  conversation got a shadow and a portrait in a recess; the death screen got a
+  full-width band instead of text floating in space; the descent doors got plates
+  framed by the price of the risk; and the altar got two equal scale pans instead
+  of two lines one after another.
+
+  One collision showed up immediately: the panel's title tab occupies `py-6…py+6`,
+  and the new tab rows ran into it — the rows moved lower, and the forge now has
+  three tiers of them (section → category → weapon type).
+
+The bevel on buttons, bars, sockets, panels and both maps is one and the same
+(`bevelPath`): repeating a single detail ties different parts of the interface
+together more strongly than a shared colour. Gradients all go through one cache
+(`vgrad`) — otherwise every newly decorated panel would add its own tenth of a
+millisecond to the frame.
+
+### Signing in with a wallet
+
+The title screen gained a Phantom sign-in. What happens: the page asks the
+extension for a public key and asks it to sign **a text**; the extension shows
+that text to the player in its own window and signs it with a private key that
+never leaves the wallet. The game receives the public key and the signature —
+and only those.
+
+What does not happen: the game **never** asks for a seed phrase, never requests
+the private key and never calls `signTransaction`. Signing in is signing a text,
+not transferring funds. The signed message is deliberately readable: domain,
+purpose, a nonce, a timestamp. Signing "some incomprehensible bytes" is the worst
+habit you can teach a player, because that is exactly how funds get taken.
+
+**What this is not yet.** A signature only means something when a server verifies
+it: ed25519 against the public key and a nonce the server itself issued. There
+was no server yet, the nonce was born on the client and nobody verified the
+signature — so it was a convenient way to name yourself, not a proof: anyone can
+fake the wallet's answer from the console. The places that must move to the
+server are marked in the code with a `СЕРВЕР` note.
+
+Guest sign-in was kept deliberately. Without it the game would stop starting for
+everyone without the extension — and that is most of the people who open the link
+for the first time.
+
+Three outcomes are handled by meaning as well: no wallet — offer to install it;
+the player cancelled the signature — that is not an error and must not look like
+a failure; everything else — a real failure with a clear line of text. A sign-in
+survives a page reload for a week, after which we ask again.
+
+### Movement over the network: how prediction converged
+
+The client moves the hero immediately without waiting for the server, then
+reconciles. At first reconciliation triggered on a third of all inputs with
+divergence up to 26 pixels — the hero jittered. Working it out took three
+attempts, and each was instructive.
+
+**First suspicion: the server does not know the hero.** The room held a stub with
+a hard-coded speed of 64.25 and a hundred health — for a level 35 hero that is
+untrue. The server learned to raise a real `Player` from the database with the
+same `fromJSON` the client uses (for which `reviveItem` moved out of `game.js`
+into `systems/items.js` — it is a rule about items, and it belongs next to
+items). The divergence **did not change**: 33%, 26 px. The stats had nothing to
+do with it.
+
+**The real cause: different integration rates.** The step formula is identical,
+but the client runs it sixty times a second and the server twenty. Step-by-step
+integration with different step sizes gives different coordinates — always. Now
+the client sends **the steps themselves** together with their `dt`, and the
+server replays them: both sides compute one sequence rather than one formula at
+different rates.
+
+Result: **26 px → 3.3 px**, and at rest the two sides differ by 0.7 pixels — that
+is the snapshot rounding to tenths.
+
+**A side effect: a hole in the defences.** Once the client sends time, it can
+send as much of it as it likes. The first version of the limit granted an
+allowance per message — and a check showed that a speed hack got through at two
+and a half times: 153 pixels per second instead of 64. Replaced with a time
+bucket: the budget accrues on the real clock, is spent in steps, and is capped at
+a quarter of a second for network jitter. Three fake clients with different rates
+and step lengths all get the same 57 px/s as an honest one.
+
+**And twice I fooled myself with the measurement.** First I ran `update` in a
+loop with five-millisecond pauses — the game ran three times faster than real
+time, the server rightly cut the excess, and the defence looked like broken
+prediction. Then I called `update` on top of the page's own running loop — the
+game ran twice as fast. Honest numbers only come out when the game is driven by
+its own loop and the measurement merely watches from the side.
+
+### Water
+
+The pond looked like a puddle of paint, and my first thought was that the water
+was not animated at all. That was wrong: `drawLiquidShimmer` exists and is
+called — the glints run, the glow pulses. Something else was missing.
+
+- **Depth.** The water was one colour everywhere, in the shallows and in the
+  middle. Now tiles whose four neighbours are all water darken. The pond gained a
+  bottom, and the bank gained shallows.
+- **Foam on every shore.** The surf strip ran only where land was above; on three
+  sides out of four the pond ended in nothing. The edge is what the eye reads to
+  find where the water stops.
+
+The foam had to be redone twice. A solid strip along the whole tile joined up
+with its neighbours into a continuous contour, and the pond got an outline: not a
+shore but a stepped rectangle around the water. Now each side carries two short
+strokes with their own phase — the edge breaks up and reads as surf rather than
+as a frame.
+
+It cost nothing: there are around three hundred liquid tiles in a zone, and the
+frame at the water is 1.06 ms.
+
+### Shadows: why the world looked flat
+
+The complaint "objects are not standing on the ground, they are stuck to it" is
+checked with a number, not by eye. The method: render the same frame twice — with
+shadows and with `sun.a = 0` — and subtract one from the other. That shows
+exactly what the shadow contributes, with no grass, ground or anything else mixed
+in.
+
+It turned out: **the directional shadow touched 4.1% of the frame and darkened it
+by 6%.** The shadow was there, but it could not be seen.
+
+Fixed with three changes: the shadow is longer and denser (`a` 0.26 → 0.40); it
+gained a soft edge — the silhouette is drawn twice, wider and paler plus the main
+one, because a sharply cut shadow reads as cut from paper while a canvas blur is
+expensive; and large objects get a shading patch laid under their footprint. The
+last matters most for trees: a sprite has its own baked shadow, but for a canopy
+66 pixels wide that is an 18-pixel smear — right for a blade of grass, not for a
+tree.
+
+Now: **9.6% of the frame, 7.7% darkening, the darkest point −116 instead of −54.**
+The price is 0.35 ms per frame out of the 16.7 available.
+
+### Light: the dapples that had to be moved twice
+
+The second half of the idea was sun dapples through the canopy — an evenly lit
+clearing looks as if nothing grows above it. The first attempt was **rolled
+back**: tiling noise over the whole screen produces a visible grid of repeats —
+across 480 pixels of width a 128-pixel tile fits four times, and the eye catches
+the lattice instantly (on water it read as rectangles). The gain was meanwhile
+tiny: the brightness spread across the frame grew by 5%. Trading a visible grid
+for five per cent is a bad deal.
+
+It was done differently: the dapples are built **from the canopies themselves**
+and live in world coordinates. There is nothing to repeat — no tile, no screen
+grid. The spread comes from a hash of the index rather than from `Math.random`:
+the zone sits in a cache and is redrawn thousands of times, and the dapples must
+not jump.
+
+The second attempt had to be redone too. At first the patch was placed exactly in
+the canopy's shadow — physically correct: light comes from the side, and
+everything that gets through the leaves falls where the shadow fell. Measurement
+said this does not work: **1.8% of the frame, brightness spread 37.06 → 36.99**,
+that is, nothing. In this camera the canopy's shadow is covered by the tree
+sprites themselves, and the patch landed underneath them. The player sees the
+ground **between** canopies and in front of them — the light must fall there. The
+spread was widened to nearly the whole canopy and shifted down the screen,
+towards the camera.
+
+A soft bell read as a blur — "somewhat lighter over there". A patch of light
+needs an edge: sun through leaves gives a blot, not a mist. The gradient's core
+holds to 0.82 of the radius and only then falls off; after that the average
+brightness gain rose from 15 to 24 and the brightest point from 79 to 121.
+
+The dapples creep along with the canopy: the gaps in the leaves are moved by the
+same wind field that sways the tree itself — otherwise the light stands still
+while the tree moves.
+
+| biome | strength | dapples per zone | frame touched | average gain |
 |---|---|---|---|---|
-| лес | 1,0 | 1347 | 3,7% | +24,9 |
-| кряж | 0,5 | 1582 | 9,3% | +12,6 |
-| топь | 0,7 | 1598 | 4,9% | +13,9 |
-| пустошь | 0,3 | 916 | 3,1% | +6,1 |
-| город | 0,55 | 36 | 0,5% | +16,5 |
-| подземелье | 0 | 0 | 0% | — |
+| forest | 1.0 | 1347 | 3.7% | +24.9 |
+| ridge | 0.5 | 1582 | 9.3% | +12.6 |
+| mire | 0.7 | 1598 | 4.9% | +13.9 |
+| waste | 0.3 | 916 | 3.1% | +6.1 |
+| city | 0.55 | 36 | 0.5% | +16.5 |
+| dungeon | 0 | 0 | 0% | — |
 
-Кряж выбивается по площади: сосны выше и гуще, а снег открыт — там это читается
-зимним солнцем, а не грязью. В городе деревьев всего ничего, и 36 пятен —
-честное отражение этого, а не недоработка.
+The ridge stands out by area: the pines are taller and denser and the snow is
+open — there it reads as winter sun rather than dirt. In the city there are
+hardly any trees, and 36 dapples is an honest reflection of that rather than an
+oversight.
 
-Около 9% пятен ложились на воду и в стены — отсечены при построении: у воды
-свои блики (`drawLiquidShimmer`), и тёплая клякса поверх синевы читается сбоем.
-Кадр не изменился: медиана 2,3 мс, худшие 5% — 2,6.
+About 9% of the dapples landed on water or in walls — cut at construction time:
+water has its own glints (`drawLiquidShimmer`), and a warm blot over the blue
+reads as a bug. The frame did not change: median 2.3 ms, worst 5% at 2.6.
 
-### Воздушная дымка: даль, которой не было
+### Aerial haze: the distance that was not there
 
-В верхней проекции экранный `y` — это и есть расстояние до камеры: верх кадра
-дальше низа. Значит, признак дали должен быть, и его можно проверить, не
-написав ни строчки. Замер насыщенности по шести полосам сверху вниз:
+In a top-down projection the screen `y` **is** the distance to the camera: the
+top of the frame is further than the bottom. So there ought to be a cue for
+distance, and it can be checked without writing a line. Saturation measured
+across six bands from top to bottom:
 
-    0,513   0,474   0,472   0,515   0,517   0,512
+    0.513   0.474   0.472   0.515   0.517   0.512
 
-Плоско. Разница в контрасте (23,9 сверху против 34,9 снизу) шла целиком от
-виньетки, а не от глубины. Признака удалённости в кадре не было вовсе.
+Flat. The difference in contrast (23.9 at the top against 34.9 at the bottom)
+came entirely from the vignette, not from depth. There was no distance cue in the
+frame at all.
 
-Дымка светлит и обесцвечивает верх кадра — обычным альфа-смешиванием к своему
-цвету, из кэшированного градиента. Она привязана к экрану, а не к миру, и это
-не произвольная накладка: экранный `y` и есть расстояние, так что дымка едет по
-миру вместе с камерой ровно так, как и должна. Идёт **до** виньетки: дымка про
-даль, виньетка про кадр.
+The haze lightens and desaturates the top of the frame — ordinary alpha blending
+towards its own colour, from a cached gradient. It is attached to the screen
+rather than the world, and that is not an arbitrary overlay: screen `y` is the
+distance, so the haze rides across the world with the camera exactly as it
+should. It goes **before** the vignette: haze is about distance, the vignette is
+about the frame.
 
-    было   0,644   0,618   0,584   0,541   0,460   0,475
-    стало  0,551   0,593   0,584   0,541   0,460   0,475
+    was   0.644   0.618   0.584   0.541   0.460   0.475
+    now   0.551   0.593   0.584   0.541   0.460   0.475
 
-Первый вариант доставал до середины экрана (`reach` 0,46) и выглядел лучше — но
-герой стоит в центре, и полоса задевала его самого и всё, с чем он дерётся.
-Обесцвечивать бойцов ради дали — плохая сделка; поджато до 0,32, теперь дымка
-живёт над линией боя, а не в ней. Видно это и в числах: трогаются только две
-верхние полосы из шести.
+The first variant reached to the middle of the screen (`reach` 0.46) and looked
+better — but the hero stands in the centre, and the band caught him and
+everything he was fighting. Desaturating the combatants for the sake of distance
+is a bad deal; it was pulled back to 0.32, and the haze now lives above the line
+of battle rather than inside it. The numbers show it too: only the top two bands
+out of six are touched.
 
-Плотность своя у каждого биома: кряж 0,20 (морозная дымка), топь 0,18 (муть),
-пустошь 0,17 (марево над горячей землёй), лес 0,13, город 0,09, подземелье —
-нет вовсе, под землёй далей не бывает. Стоит это ноль: один готовый блит, кадр
-2,4 мс и с дымкой, и без неё.
+Density differs per biome: ridge 0.20 (frost haze), mire 0.18 (murk), waste 0.17
+(shimmer over hot ground), forest 0.13, city 0.09, dungeon — none at all, there
+are no distances underground. It costs zero: one ready-made blit, a 2.4 ms frame
+with the haze and without it.
 
-### Земля: 4% мелочи и ноль на дорогах
+### The ground: 4% of detail and zero on the roads
 
-«Земля пустая» — тоже претензия, которую надо считать, а не решать на глаз.
-Замер безголовой сборкой: мелкие плоские объекты (травинки, камешки, трещины)
-покрывали **4% проходимых клеток**, а из 577 клеток дороги — **ни одной**.
+"The ground is empty" is also a complaint to be counted rather than settled by
+eye. Measured with the headless build: small flat objects (grass blades, pebbles,
+cracks) covered **4% of walkable tiles**, and out of 577 road tiles — **not one**.
 
-Причина оказалась в одном правиле, применённом шире, чем следовало. Раскидывая
-объекты, генератор пропускал клетку дороги и все соседние с ней. Правило верное
-— но только для того, что перегораживает путь: дерево посреди тропы это тупик.
-Плоская мелочь не перегораживает ничего, и запрет отнимал у дорог всю фактуру.
-Теперь «рядом с дорогой» глушит только крупное, а у мелочи и травы свой бросок.
+The cause turned out to be one rule applied more widely than it should have been.
+When scattering objects, the generator skipped a road tile and everything
+adjacent to it. The rule is right — but only for things that block the way: a tree
+in the middle of a path is a dead end. Flat detail blocks nothing, and the ban
+stripped the roads of all texture. "Next to a road" now suppresses only large
+objects, while small ones and grass get their own roll.
 
-Первый заход дал 29% и **был перебран**: герой начал теряться в мусоре, а дорога
-перестала читаться дорогой. Пустая земля — беда, но неразличимая дорога хуже:
-по ней игрок ориентируется. Убавлено до **19% земли и 7% дороги**: 744 мелких
-объекта на зону, всего объектов 1189 против 671 до правки. Кадр в лесу: медиана
-2,4 мс, худшие 5% — 2,9 из 16,7 доступных.
+The first attempt produced 29% and **was overdone**: the hero began getting lost
+in the litter, and the road stopped reading as a road. Empty ground is a problem,
+but an indistinguishable road is worse: the player navigates by it. Trimmed to
+**19% on ground and 7% on roads**: 744 small objects per zone, 1189 objects in
+total against 671 before the change. The frame in the forest: median 2.4 ms,
+worst 5% at 2.9 out of the 16.7 available.
 
-### Ветер: 213 крон качались вразнобой
+### Wind: 213 canopies swaying out of step
 
-Кроны качались и раньше — `p.sway` был с самого начала, и амплитуда у него
-честная: сдвиг верхушки около 7,6 экранных пикселя. (Судить об этом по
-стоп-кадру нельзя в принципе — я сперва решил, что лес неподвижен, и ошибся.)
+The canopies swayed before too — `p.sway` was there from the start, and its
+amplitude is honest: the treetop shifts around 7.6 screen pixels. (You cannot
+judge this from a still frame at all — I first decided the forest was motionless
+and was wrong.)
 
-Беда была в согласованности. Каждое дерево качалось от собственного синуса со
-случайной фазой и периодом от 2,7 до 12,3 секунды. Замер: у соседних крон —
-тех, что стоят ближе 64 пикселей и должны клониться вместе, — направление
-наклона совпадало в **50% случаев**. Ровно монетка. Вместе это читалось не
-ветром, а желе.
+The trouble was coherence. Every tree swayed from its own sine with a random
+phase and a period between 2.7 and 12.3 seconds. Measured: neighbouring canopies
+— those within 64 pixels, which should lean together — matched in lean direction
+**50% of the time**. Exactly a coin flip. Together it read not as wind but as
+jelly.
 
-[`src/art/wind.js`](src/art/wind.js) заменяет личные синусы одним полем на весь
-мир: волна порывов бежит наискось через карту, поверх неё медленная огибающая
-(ветер то стихает, то налетает), и лишь пятая часть размаха остаётся на личную
-фазу — без неё строй выглядит машинным. Размах поля тот же, поэтому амплитуда
-не изменилась: изменилась только согласованность.
+[`src/art/wind.js`](src/art/wind.js) replaces the individual sines with one field
+across the whole world: a wave of gusts runs diagonally over the map, a slow
+envelope sits on top (the wind drops and rises), and only a fifth of the amplitude
+is left to an individual phase — without it the formation looks mechanical. The
+field's amplitude is the same, so the sway did not change: only the coherence did.
 
-| расстояние между кронами | 0–64 | 64–140 | 140–240 | 240–400 | 400–700 |
+| distance between canopies | 0–64 | 64–140 | 140–240 | 240–400 | 400–700 |
 |---|---|---|---|---|---|
-| клонятся в одну сторону | 92% | 87% | 79% | 70% | 45% |
+| leaning the same way | 92% | 87% | 79% | 70% | 45% |
 
-Важна не только левая колонка, но и правая: на 400+ пикселях совпадение падает
-до случайного. Волна идёт по лесу, а не качает его одним куском.
+The right-hand column matters as much as the left: past 400 pixels the match
+falls to chance. The wave travels through the forest rather than rocking it as
+one block.
 
-Дно огибающей пришлось поднять с 0,10 до 0,24: при 0,10 замер показал затишья
-на несколько секунд, когда лес почти замирает, — это читается не как безветрие,
-а как сломавшаяся анимация.
+The envelope's floor had to be raised from 0.10 to 0.24: at 0.10 the measurement
+showed lulls of several seconds where the forest nearly freezes — which reads not
+as calm weather but as broken animation.
 
-Сила ветра своя у каждого биома: кряж 1,35, лес 1,0, пустошь 0,9, город 0,7
-(прикрыт стенами), топь 0,45 (воздух стоит), подземелье 0. Кадр не изменился
-вовсе — три синуса на объект теряются в шуме измерения.
+Wind strength differs per biome: ridge 1.35, forest 1.0, waste 0.9, city 0.7
+(sheltered by walls), mire 0.45 (the air stands still), dungeon 0. The frame did
+not change at all — three sines per object are lost in measurement noise.
 
-### Аудит боя
+### The combat audit
 
-Аудиты зон и содержимого отвечали на вопросы «куда можно дойти» и «есть ли до
-чего доходить». Про то, чем игрок занят всё время, мы не знали ничего числами.
-[`tools/combat-audit.js`](tools/combat-audit.js) меряет бой **настоящим кодом
-игры**: `resolveHit`, `swingHits`, геттеры героя, `scaleStats` врага,
-`Player.takeDamage`. Ни одна формула в нём не повторена.
+The zone and content audits answered "where can you walk" and "is there anything
+worth walking to". About what the player does all the time we knew nothing in
+numbers. [`tools/combat-audit.js`](tools/combat-audit.js) measures combat with
+**the game's real code**: `resolveHit`, `swingHits`, the hero's getters, the
+enemy's `scaleStats`, `Player.takeDamage`. Not one formula in it is duplicated.
 
-Чтобы так стало можно, из `Game.damageEnemy` вынесено **само правило** —
-`resolveHit` в [`systems/combat.js`](src/systems/combat.js). Там же раньше стоял
-комментарий, объясняющий, почему расчёта урона нет: я однажды написал его по
-памяти, сверка показала расхождение по каждому пункту, и вывод был — не
-переписывать заново, а разделить настоящий на правило и зрелище. Теперь это
-сделано, и стенд считает ровно то же, что игра.
+To make that possible, **the rule itself** was lifted out of `Game.damageEnemy` —
+`resolveHit` in [`systems/combat.js`](src/systems/combat.js). There used to be a
+comment there explaining why the damage calculation was absent: I once wrote it
+from memory, a comparison showed it disagreed with the game on every point, and
+the conclusion was not to rewrite it again but to split the real one into rule
+and spectacle. That is now done, and the stand computes exactly what the game
+does.
 
-**Первый прогон соврал.** Половина игры отрапортовала «цель не убивается за 300
-секунд». Причина оказалась в стенде: `facing` у свежего героя равен π/2 — взгляд
-вниз, — а цель я ставил справа, и дуга взмаха её не захватывала. У мелких врагов
-попадал только третий удар связки (у него разброс шире), у крупных — ни один.
-Числа были про мою ошибку. Это третий раз за проект, когда стенд врал убедительнее,
-чем ошибся бы код.
+**The first run lied.** Half the game reported "the target does not die in 300
+seconds". The cause was in the stand: `facing` on a fresh hero is π/2 — looking
+down — and I placed the target to the right, so the swing arc did not catch it.
+On small enemies only the third blow of the combo connected (its spread is
+wider), on large ones none did. The numbers were about my mistake. That is the
+third time in this project that the stand lied more convincingly than the code
+would have.
 
-Что нашлось после починки — и главное:
+What was found after the fix — and what mattered:
 
-**Оружие было описано дважды, и описания разошлись.** В `items.js` лежит
-`WEAPON_PROFILE` (топор: урон ×1,28, темп ×0,80; кинжал: ×0,72 и ×1,45 — по
-замыслу это паритет, 1,02 против 1,04). А темп и дальность брались из отдельных
-таблиц в `Player`, которые профилю не соответствовали: реальный темп топора
-0,705 вместо 0,80, кинжала — 1,605 вместо 1,45. Обе ошибки тянули в одну
-сторону, и кинжал бил в 1,7–1,9 раза сильнее топора.
+**The weapons were described twice, and the descriptions disagreed.** `items.js`
+holds `WEAPON_PROFILE` (axe: damage ×1.28, rate ×0.80; dagger: ×0.72 and ×1.45 —
+by design that is parity, 1.02 against 1.04). But rate and range were taken from
+separate tables in `Player` that did not match the profile: the axe's real rate
+was 0.705 instead of 0.80, the dagger's 1.605 instead of 1.45. Both errors pulled
+the same way, and the dagger hit 1.7–1.9 times harder than the axe.
 
-`attackRate` и `attackRange` теперь считаются из профиля — расходиться нечему.
-Заодно вернулись задуманные дальности: лук 29 и посох 27 вместо одинаковых 24.
+`attackRate` and `attackRange` are now computed from the profile — there is
+nothing left to disagree. The intended ranges came back along the way: bow 29 and
+staff 27 instead of an identical 24.
 
-| уровень | было (кинжал / худший ближний) | стало |
+| level | was (dagger / worst melee) | now |
 |---|---|---|
-| 8 | ×1,89 | ×1,66 |
-| 20 | ×1,47 | ×1,24 |
-| 34 | ×1,78 | ×1,48 |
+| 8 | ×1.89 | ×1.66 |
+| 20 | ×1.47 | ×1.24 |
+| 34 | ×1.78 | ×1.48 |
 
-Остаток честно не закрыт и висит в отчёте: урон оружия — примерно половина
-атаки героя, поэтому множитель урона из профиля разбавляется вдвое, а множитель
-скорости применяется ко всей атаке целиком. Скорость поэтому всегда чуть выгоднее
-урона. Чтобы убрать это до конца, надо менять способ, которым оружие входит в
-атаку, — а это уже видно игроку в цифрах предмета, и решать так наспех нельзя.
+The remainder is honestly not closed and stays in the report: weapon damage is
+roughly half of the hero's attack, so the profile's damage multiplier is diluted
+by half while the speed multiplier applies to the whole attack. Speed is
+therefore always slightly better than damage. Removing that entirely means
+changing how a weapon enters the attack — and that is visible to the player in
+the item's numbers, so it cannot be decided in a hurry.
 
-**Ведьма топи не была элитой.** У неё стояло `hp: 1.2` — меньше, чем у рядового
-болотника (1.3) из того же биома. Элита умирала с ним вровень, за те же пять
-ударов. Прочие элиты держат 2,2–3,4. Поставлено 2,1: самая хрупкая из элит, но
-всё же элита.
+**The Mire Witch was not an elite.** She had `hp: 1.2` — less than a regular
+bogling (1.3) from the same biome. The elite died alongside it, in the same five
+hits. The other elites hold 2.2–3.4. Set to 2.1: the most fragile of the elites,
+but an elite nonetheless.
 
-**Два порога я поставил с потолка, и они соврали.** «Слизень умирает за 0,4 с» и
-«первый босс короче 12 с» — это не поломка, а замысел: слизень на первом уровне
-и есть первое убийство в игре, пять взмахов здесь читались бы залипанием. Пороги
-переписаны с обоснованием: нижней границы для первого биома нет вовсе, а боссов
-проверяет не абсолютное время, а то, что каждый следующий бой длиннее
-предыдущего (10,4 → 14,3 → 19,5 → 26,3 с — растёт).
+**Two thresholds I set out of thin air, and they lied.** "A slime dies in 0.4 s"
+and "the first boss is shorter than 12 s" are not breakages but intent: a slime
+at level one is the first kill in the game, and five swings there would read as
+sticking. The thresholds were rewritten with a justification: there is no lower
+bound for the first biome at all, and bosses are checked not by absolute time but
+by each fight being longer than the previous one (10.4 → 14.3 → 19.5 → 26.3 s —
+it rises).
 
-Что оказалось в порядке: боссы держат ровную кривую; щитоносцы пропускают в лоб
-26–33% урона за цикл связки (третий удар тяжёлый и щит ослабляет), а со спины —
-всё, то есть щит решается обходом, а не терпением; рядовые убивают героя за
-8–21 удар и с уровнями становятся опаснее.
+What turned out to be fine: bosses hold an even curve; shield bearers let 26–33%
+of damage through from the front over a combo cycle (the third blow is heavy and
+weakens the shield), and everything from behind — so a shield is solved by
+flanking rather than by patience; regular monsters kill the hero in 8–21 hits and
+grow more dangerous with level.
 
-### Умения: 370% у одного и 28% у другого
+### Skills: 370% on one and 28% on another
 
-Чтобы стенд мог прогонять настоящий `run()` каждого умения, из `Game` вынесены
-и формы доставки: `aoeTargets`, `lineTargets`, `hazardTargets`, `skillRoll`,
-`boltSpec`. Каждая — по той же причине, что и правило урона. Скажем, опасная
-зона меряет высоту цели как `e.r * 0,4`, а круг — как `0,5`; копия разошлась бы
-ровно на такой мелочи. В `boltSpec` копировать пришлось бы `heavy` (снаряд
-обходит броню), `pierce` и `effect` — разойдись любое, и стенд мерил бы другой
-снаряд.
+So that the stand could run each skill's real `run()`, the delivery shapes were
+lifted out of `Game` as well: `aoeTargets`, `lineTargets`, `hazardTargets`,
+`skillRoll`, `boltSpec`. Each for the same reason as the damage rule. A hazard
+zone, for instance, measures a target's height as `e.r * 0.4` while a circle uses
+`0.5`; a copy would diverge on exactly that kind of detail. In `boltSpec` I would
+have had to copy `heavy` (the projectile ignores armour), `pierce` and `effect` —
+let any one of them drift and the stand would be measuring a different
+projectile.
 
-**Первую оценку пришлось выбросить целиком.** Я сравнивал урон умения в секунду
-с уроном обычной атаки и получил «семь умений слабее обычной атаки». Оценка
-меряла не то. Умение не заменяет взмахи, а **добавляется** к ним: герой машет
-всё время. И судить площадное умение по одиночной цели так же нечестно, как
-судить обморожение по прибавке к урону — ту же ошибку я сделал абзацем выше, с
-метками. Мера переписана на «вклад»: сколько умение даёт сверх того, что за его
-откат нанесли бы одними взмахами, и по лучшему для умения случаю. Контроль
-(оглушение, метки) стенд теперь тоже замеряет — по состоянию цели после
-применения, а не по описанию.
+**The first assessment had to be thrown away entirely.** I compared a skill's
+damage per second against a normal attack's and got "seven skills are weaker than
+a normal attack". The assessment was measuring the wrong thing. A skill does not
+replace swings, it **adds** to them: the hero swings all the time. And judging an
+area skill by a single target is as unfair as judging chill by its damage bonus —
+the same mistake I made a paragraph earlier, with the marks. The measure was
+rewritten as "contribution": how much a skill adds beyond what swings alone would
+have dealt during its cooldown, taken at the skill's best case. The stand now
+measures control (stuns, marks) too — from the target's state after the cast
+rather than from the description.
 
-С честной мерой вылез ровно один выброс: **стена огня давала 370% вклада** —
-вдвое больше следующего умения и больше всех по одиночной цели. Причина в
-объёме: пять плиток × 5 секунд × два тика в секунду = полсотни попаданий с
-одного нажатия. `mag` 0,5 → 0,2 ставит её вровень с ядовитым облаком (148%
-против 143%) — это её прямой родственник: та же идея зоны, тот же размер вклада.
+With an honest measure exactly one outlier appeared: **wall of fire gave a 370%
+contribution** — twice the next skill and the highest on a single target. The
+cause is volume: five tiles × 5 seconds × two ticks per second = fifty hits from
+one press. `mag` 0.5 → 0.2 puts it level with poison cloud (148% against 143%) —
+its direct relative: the same idea of a zone, the same size of contribution.
 
-Разброс по всем тринадцати умениям стал 28–177%, и нижний край занимают три
-умения контроля (цепная молния, сотрясение, ледяная новая) — они меняют урон на
-оглушение и метки осознанно. Придирку «держится только на контроле» я из стенда
-**снял**: она описывала замысел, а не поломку.
+The spread across all thirteen skills became 28–177%, and the bottom is occupied
+by three control skills (chain lightning, concussion, frost nova) — they trade
+damage for stuns and marks deliberately. The complaint "it only holds up on
+control" I **removed** from the stand: it described the intent, not a breakage.
 
-Проверено и в живой игре, все три пути доставки: вихрь 310 урона, аркановый
-залп 600 (снаряды израсходованы), стена огня 525 за 2,6 секунды и продолжает
-гореть. По дороге стенд дважды соврал моей же виной — герой погиб под мишенями,
-экран смерти выставил `menus.blocking`, и мир встал; урон показывал ноль при
-живых снарядах. Ноль был про паузу, а не про игру.
+Checked in the live game too, all three delivery paths: whirlwind 310 damage,
+arcane volley 600 (projectiles spent), wall of fire 525 over 2.6 seconds and
+still burning. Along the way the stand lied twice through my own fault — the hero
+died under the targets, the death screen set `menus.blocking`, and the world
+stopped; damage read zero while projectiles were alive. The zero was about the
+pause, not about the game.
 
-### Музыка: доля, петля и напряжение
+### Music: the beat, the loop and the tension
 
-Весь звук в игре синтезируется кодом — файлов нет. Музыка была: семь тем,
-секвенсор с аккордовой подложкой, басом, арпеджио и перкуссией. Замер нашёл в
-ней три беды, каждую числом.
+All sound in the game is synthesised in code — there are no files. Music existed:
+seven themes,
+a sequencer with a chord bed, bass, arpeggio and percussion. Measurement found
+three problems in it, each with a number.
 
-**Доля считалась кадрами.** `this._timer -= dt` — сколько успел кадр, столько и
-прошло музыкального времени. Замер по часам звука: разбег доли **7,4 мс по
-медиане и до 17,4** при шаге в 190. Четыре процента по медиане — это слышно как
-неровность, а при просадке кадра доля просто съезжала. Теперь секвенсор
-расписывает ноты **вперёд по `ctx.currentTime`**, а кадр только спрашивает, что
-успело настать. Разбег стал **ровно 0 мс**.
+**The beat was counted in frames.** `this._timer -= dt` — as much as the frame
+managed, that much musical time had passed. Measured against the audio clock: the
+beat drifted **7.4 ms at the median and up to 17.4** on a 190 ms step. Four per
+cent at the median is audible as unevenness, and on a frame stall the beat simply
+slid. The sequencer now schedules notes **ahead against `ctx.currentTime`**, and
+the frame only asks what has come due. The drift became **exactly 0 ms**.
 
-**Петля длилась 8–17 секунд.** Четыре аккорда по шестнадцать долей. Лес
-повторялся сорок девять раз за десять минут, боссовая тема — семьдесят два, а
-бой с боссом длится 15–39 секунд: одно и то же по нескольку раз за схватку.
+**The loop lasted 8–17 seconds.** Four chords of sixteen beats. The forest
+repeated forty-nine times in ten minutes, the boss theme seventy-two — and a boss
+fight lasts 15–39 seconds: the same thing several times per fight.
 
-Две правки. Прогрессии удлинены вдвое — вторая половина уходит в параллельные
-ступени и возвращается. И арпеджио теперь индексируется **сквозным** номером
-доли, а не местом в такте: раньше `arp[beat % len]` перезапускал рисунок каждый
-такт, и его длина ни на что не влияла. Взяв длину, не кратную шестнадцати,
-получаем сдвиг — рисунок совпадает сам с собой только через наименьшее общее
-кратное.
+Two changes. The progressions were doubled in length — the second half moves to
+relative degrees and comes back. And the arpeggio is now indexed by an
+**absolute** beat number rather than by position in the bar: `arp[beat % len]`
+used to restart the figure every bar, so its length affected nothing. Take a
+length that is not a multiple of sixteen and you get a shift — the figure only
+coincides with itself again at the least common multiple.
 
-| тема | было | стало |
+| theme | was | now |
 |---|---|---|
-| город | 10,9 с | 326 с |
-| лес | 12,2 с | 122 с |
-| топь | 14,7 с | 206 с |
-| кряж | 13,4 с | 242 с |
-| пустошь | 9,9 с | 694 с |
-| подземелье | 16,6 с | 233 с |
-| босс | 8,3 с | 1281 с |
+| city | 10.9 s | 326 s |
+| forest | 12.2 s | 122 s |
+| mire | 14.7 s | 206 s |
+| ridge | 13.4 s | 242 s |
+| waste | 9.9 s | 694 s |
+| dungeon | 16.6 s | 233 s |
+| boss | 8.3 s | 1281 s |
 
-Честная оговорка: это длина **полного** совпадения. Гармония по-прежнему ходит
-по кругу за восемь тактов — 21,8 секунды в лесу. Не повторяется сочетание, и
-именно оно создаёт ощущение зацикленности. Боссовую тему игрок теперь не
-услышит дважды одинаково ни в одном бою.
+An honest caveat: that is the length of a **full** coincidence. The harmony still
+goes round in eight bars — 21.8 seconds in the forest. What does not repeat is
+the combination, and it is the combination that creates the sense of a loop. The
+player will now never hear the boss theme the same way twice in any fight.
 
-**Музыка ничего не слышала.** Одна и та же петля звучала и в пустом городе, и
-под тремя гоблинами, и на боссе. Добавлено напряжение 0..1: игра считает
-разбуженных врагов ближе 190 пикселей (босс — сразу на максимум), музыка
-подмешивает пульс на долю и подголосок октавой ниже. Не громкость, а
-плотность: громче — не значит тревожнее, тревожнее — когда музыке становится
-тесно.
+**The music heard nothing.** The same loop played in an empty city, under three
+goblins, and on a boss. Tension 0..1 was added: the game counts woken enemies
+within 190 pixels (a boss goes straight to maximum), and the music mixes in a
+pulse on the beat and a counter-voice an octave lower. Not volume but density:
+louder does not mean more anxious; more anxious is when the music runs out of
+room.
 
-Ползёт напряжение медленно, около секунды на полный ход: музыка, дёргающаяся
-вместе с каждым забежавшим гоблином, звучит сломанной. Замер живьём: покой 0 →
-трое рядовых 0,48 → плюс босс 1,0 → после боя спад до нуля за три секунды.
+Tension moves slowly, about a second for the full range: music that twitches with
+every goblin running past sounds broken. Measured live: calm 0 → three regulars
+0.48 → plus a boss 1.0 → after the fight, down to zero in three seconds.
 
-**Смена темы была обрывом.** Замер: громкость шины 0,34 до смены, 0,34 во время
-и 0,34 после — затухания не было вовсе, `setTargetAtTime` к той же величине
-ничего не делает. Темы наступали друг на друга: **0,14 секунды** обе ставили
-ноты в пределах окна упреждения, а подложка старой держится `stepTime × 15` — до
-трёх секунд, — и аккорд леса звенел под боссовой темой в чужой тональности.
+**Changing theme was a cut.** Measured: bus volume 0.34 before the change, 0.34
+during and 0.34 after — there was no fade at all, `setTargetAtTime` to the same
+value does nothing. Themes trod on each other: for **0.14 seconds** both placed
+notes inside the lookahead window, and the old bed holds for `stepTime × 15` — up
+to three seconds — so the forest chord rang under the boss theme in a foreign key.
 
-Теперь шина уходит в ноль, тема меняется в тишине и возвращается. Старые ноты
-доигрывают под затухание — так честнее, чем обрывать их посреди.
+Now the bus goes to zero, the theme changes in silence, and it comes back. Old
+notes finish under the fade — that is more honest than cutting them mid-way.
 
-    громкость   0,34 ──▼── 0 за 0,3 с ──▲── 0,34 за 1,5 с
-    наложение   0,14 с → 0,03 с, и приходится оно на нулевую громкость
+    volume    0.34 ──▼── 0 over 0.3 s ──▲── 0.34 over 1.5 s
+    overlap   0.14 s → 0.03 s, and it falls at zero volume
 
-Босс обрывает тему биома быстро — он и должен перебивать, — а свою поднимает
-полторы секунды, ровно под рёв и тряску экрана: вход на полной громкости звучал
-переключением радио, а не надвигающейся угрозой. Обратно после победы — не
-спеша, за 1,6 секунды: бой кончился, мир возвращается, а не включается.
+A boss cuts the biome theme quickly — it is meant to interrupt — and raises its
+own over a second and a half, exactly under the roar and the screen shake:
+entering at full volume sounded like switching radio stations rather than an
+approaching threat. On the way back after victory it takes its time, 1.6 seconds:
+the fight is over, the world returns rather than switches on.
 
-### Профайлер кадра
+### The frame profiler
 
-Замер кадра я за эту работу делал руками раз пять, и **дважды он соврал**: один
-раз я гонял `update` со своими паузами и игра шла втрое быстрее реального
-времени, другой — звал `update` поверх работающего цикла страницы, и она шла
-вдвое. Оба раза числа выглядели убедительно.
+I measured the frame by hand about five times during this work, and **twice it
+lied**: once I ran `update` with my own pauses and the game went three times
+faster than real time, another time I called `update` on top of the page's
+running loop and it went twice as fast. Both times the numbers looked convincing.
 
-[`core/profiler.js`](src/core/profiler.js) построен на одном правиле: **он
-ничего не двигает и никого не вызывает**. Границы кадра ему сообщает настоящий
-`loop`, участки размечены прямо в `draw`. Уберёшь профайлер — игра пойдёт ровно
-так же. F3 или тильда включают панель.
+[`core/profiler.js`](src/core/profiler.js) is built on one rule: **it moves
+nothing and calls nobody**. The real `loop` tells it where the frame boundaries
+are, and the sections are marked directly in `draw`. Remove the profiler and the
+game runs exactly the same. F3 or the backtick toggles the panel.
 
-Кольцо на 240 кадров — четыре секунды. Медиана и худшие 5%, а не среднее:
-среднее по кадрам бесполезно, редкий провал в нём растворяется, а игроку заметен
-именно он. Отдельной строкой — **пауза между кадрами**: сборка мусора и работа
-браузера случаются между вызовами, и замер только внутри кадра их не увидит.
+A 240-frame ring — four seconds. Median and worst 5%, not the average: an average
+over frames is useless, a rare stall dissolves in it, and it is precisely the
+stall the player notices. A separate line shows the **gap between frames**:
+garbage collection and browser work happen between calls, and measuring only
+inside the frame will not see them.
 
-Первое же включение показало то, чего я не знал:
+The very first run showed things I did not know:
 
-| | медиана | p95 | макс |
+| | median | p95 | max |
 |---|---|---|---|
-| кадр | 2,50 | 2,90 | 3,10 |
-| · update | 0,00 | 0,20 | 0,30 |
-| · draw | 2,40 | 2,80 | 3,10 |
-| пауза между | 14,20 | 14,60 | 15,40 |
+| frame | 2.50 | 2.90 | 3.10 |
+| · update | 0.00 | 0.20 | 0.30 |
+| · draw | 2.40 | 2.80 | 3.10 |
+| gap between | 14.20 | 14.60 | 15.40 |
 
-    свет       1,06     ← 42% кадра
-    объекты    0,57
-    интерфейс  0,30
-    земля      0,17
-    эффекты    0,00
+    light      1.06     ← 42% of the frame
+    objects    0.57
+    interface  0.30
+    ground     0.17
+    effects    0.00
 
-**Вся симуляция — ноль.** Мобы, снаряды, зоны, коллизия не стоят ничего
-измеримого; кадр целиком уходит на отрисовку. А внутри отрисовки почти половину
-съедает **свет** — больше, чем полторы тысячи объектов вместе взятые. Ни одного
-из этих двух фактов я до сих пор не знал, хотя мерил кадр весь день.
+**The whole simulation is zero.** Monsters, projectiles, zones and collision cost
+nothing measurable; the frame goes entirely to drawing. And inside drawing,
+almost half is eaten by **light** — more than fifteen hundred objects put
+together. I knew neither of those two facts, despite measuring the frame all day.
 
-### Атлас спрайтов: проверено и отвергнуто
+### A sprite atlas: checked and rejected
 
-Я сам предложил заменить полторы сотни канвасов атласом — и сам же проверил,
-прежде чем делать. В самой гуще леса: **826 вызовов `drawImage` за кадр из 178
-разных источников, но занимают они 0,74 мс из 2,6** — 28% кадра, а кадр это 15%
-бюджета. Даже вдвое более быстрая отрисовка выиграла бы 0,35 мс из 16,7.
+I proposed replacing a hundred and fifty canvases with an atlas myself — and
+checked it myself before doing it. In the thick of the forest: **826 `drawImage`
+calls per frame from 178 different sources, but they take 0.74 ms out of 2.6** —
+28% of the frame, and the frame is 15% of the budget. Even drawing twice as fast
+would win 0.35 ms out of 16.7.
 
-Большая переделка ради двух процентов бюджета — плохая сделка. Предложение снято.
+A large rewrite for two per cent of the budget is a bad deal. Proposal withdrawn.
 
-### Кузня, руны и стихии обрели свой голос
+### The forge, the runes and the elements found their own voice
 
-Двадцать два эффекта на всю игру — и часть событий занимала чужие. Список
-подмен, собранный по всем местам вызова:
+Twenty-two effects for the whole game — and some events borrowed others'. The
+list of substitutions, gathered from every call site:
 
-| событие | звучало как |
+| event | sounded like |
 |---|---|
-| ковка | покупка в лавке |
-| разбор предмета | открытие сундука |
-| переплавка | повышение уровня |
-| слияние рун | повышение уровня |
-| заточка удалась | повышение уровня |
-| заточка сорвалась | **герой получил урон** |
-| оружие рассыпалось | **враг умер** |
-| пять реакций стихий | три чужих звука на всех |
+| crafting | a purchase in the shop |
+| salvaging an item | opening a chest |
+| reforging | a level up |
+| reforging | a level up |
+| fusing runes | a level up |
+| a sharpening succeeded | a level up |
+| a sharpening failed | **the hero took damage** |
+| a weapon shattered | **an enemy died** |
+| five elemental reactions | three borrowed sounds between them |
 
-Две последние подмены хуже прочих: игрок слышал «по мне попали», когда срывалась
-заточка, и «кто-то умер», когда рассыпалось его собственное оружие.
+The last two substitutions are worse than the rest: the player heard "I was hit"
+when a sharpening failed, and "somebody died" when their own weapon shattered.
 
-Добавлено девять звуков: `forge` (молот по наковальне), `sharpen` (точильный
-камень), `sharpenFail`, `shatterItem`, `salvage`, `fuse`, `acid`, `steam`.
-Ковка и переплавка делят один — это обе работа кузнеца, и разводить их было бы
-надуманно.
+Nine sounds were added: `forge` (a hammer on an anvil), `sharpen` (a whetstone),
+`sharpenFail`, `shatterItem`, `salvage`, `fuse`, `acid`, `steam`. Crafting and
+reforging share one — both are the smith's work, and separating them would be
+contrived.
 
-**Чего я не могу проверить: как они звучат.** Услышать их мне нечем, и никакой
-замер этого не заменит. Что можно проверить — что игрок их **различит**. Первые
-две попытки метрики оказались негодными: косинус по сырым спектрам сложил все
-пары между 0,90 и 1,00, а после логарифма выдал `ui / uiBig` = 0,99 — на слух
-это заведомо разные вещи. Причина в том, что окно 1,2 секунды, а звуки длятся
-0,1–0,3, и тишина в хвосте роднит всё короткое.
+**What I cannot check: how they sound.** I have no way to hear them, and no
+measurement replaces that. What can be checked is whether the player will **tell
+them apart**. The first two attempts at a metric were useless: cosine similarity
+over raw spectra put every pair between 0.90 and 1.00, and after a logarithm it
+returned `ui / uiBig` = 0.99 — which are obviously different things by ear. The
+reason is that the window is 1.2 seconds while the sounds last 0.1–0.3, and the
+silence in the tail makes everything short look related.
 
-Поэтому вместо сомнительного числа сходства — три описательных признака, каждый
-из которых защитим:
+So instead of a dubious similarity number, three descriptive traits, each of
+which we can defend:
 
-| звук | длительность | спектральный центр | ход |
+| sound | duration | spectral centre | movement |
 |---|---|---|---|
-| forge (было buy) | 0,44 с (0,14) | 629 → 1816 (1094 → 1188) | вверх (ровно) |
-| salvage (было chest) | 0,30 с (0,43) | 588 → 3540 (1881 → 880) | вверх (вниз) |
-| sharpen (было level) | 0,63 с (0,50) | 1246 → 2287 (521 → 1125) | вверх, вдвое ярче |
-| sharpenFail (было hurt) | 0,31 с (0,10) | 1576 → 270 (432 → 413) | вниз (ровно) |
-| shatterItem (было die) | 0,37 с (0,22) | 1145 → 2084 (495 → 444) | вверх (ровно) |
-| fuse (было level) | 0,56 с (0,50) | 637 → 909 (521 → 1125) | подъём в 1,4 против 2,2 |
+| forge (was buy) | 0.44 s (0.14) | 629 → 1816 (1094 → 1188) | up (flat) |
+| salvage (was chest) | 0.30 s (0.43) | 588 → 3540 (1881 → 880) | up (down) |
+| sharpen (was level) | 0.63 s (0.50) | 1246 → 2287 (521 → 1125) | up, twice as bright |
+| sharpenFail (was hurt) | 0.31 s (0.10) | 1576 → 270 (432 → 413) | down (flat) |
+| shatterItem (was die) | 0.37 s (0.22) | 1145 → 2084 (495 → 444) | up (flat) |
+| fuse (was level) | 0.56 s (0.50) | 637 → 909 (521 → 1125) | a rise of 1.4 against 2.2 |
 
-Семь из восьми разошлись с прежними отчётливо. `fuse` — самый близкий: та же
-форма, что у `level`. Я его переписал (первый вариант заканчивался взлётом и
-выходил почти фанфарой; теперь два тона съезжаются к одному и гаснут вниз), но
-дальше подгонять не стал: моя мерка из трёх чисел не видит, что `level` —
-арпеджио из четырёх нот, а `fuse` — два скользящих тона. Подгонять код под
-слепую метрику хуже, чем честно сказать, где она слепа.
+Seven of eight are clearly distinct from their predecessors. `fuse` is the
+closest: the same shape as `level`. I rewrote it (the first version ended in a
+rise and came out almost a fanfare; now two tones converge on one and fade
+downwards), but I did not tune it further: my three-number measure cannot see
+that `level` is a four-note arpeggio while `fuse` is two sliding tones. Tuning
+code to a blind metric is worse than honestly saying where the metric is blind.
 
-### Сведение: игра звучала вчетверо тише, чем могла
+### Mixing: the game sounded four times quieter than it could
 
-Я предполагал, что эффекты в бою упираются в потолок и клиппят. Замер
-анализатором опроверг половину догадки и подтвердил вторую:
+I assumed combat effects were hitting the ceiling and clipping. An analyser
+measurement refuted half the guess and confirmed the other:
 
-| | пик на выходе | кадров с клипом | RMS эффектов | RMS музыки |
+| | output peak | frames clipping | effects RMS | music RMS |
 |---|---|---|---|---|
-| тишина | 0,04 | 0 | — | 0,005 |
-| гуща боя | 0,26 | 0 из 176 | 0,054 | 0,006 |
+| silence | 0.04 | 0 | — | 0.005 |
+| thick of a fight | 0.26 | 0 of 176 | 0.054 | 0.006 |
 
-**Клиппинга нет вовсе**, а пик 0,26 при доступной единице значит, что игра
-звучала вчетверо тише возможного. Заодно выяснилось, что старое замечание в коде
-— «на единице синтез начинает клиппить на пиках попаданий» — числами не
-подтверждается. Зато подтвердилось заглушение: **эффекты вдевятеро громче
-музыки**, в схватке её просто не слышно.
+**There is no clipping at all**, and a peak of 0.26 against an available 1.0
+means the game sounded four times quieter than it could. It also turned out that
+an old note in the code — "at 1.0 the synthesis starts clipping on hit peaks" —
+is not supported by the numbers. What was supported is masking: **effects are
+nine times louder than music**, and in a fight the music simply cannot be heard.
 
-Поднимать уровень напрямую было бы неверно — редкий залп из пяти попаданий сразу
-упёрся бы в потолок. Поэтому на выходе появилось сжатие (порог −16 дБ, 4:1,
-атака 4 мс), а уровни шин подняты под него. Стало: **RMS 0,049 → 0,110, пик
-0,26 → 0,54, клиппинга по-прежнему ноль.**
+Raising the level directly would have been wrong — a rare volley of five
+simultaneous hits would immediately hit the ceiling. So compression appeared on
+the output (threshold −16 dB, 4:1, 4 ms attack), and the bus levels were raised
+to meet it. Result: **RMS 0.049 → 0.110, peak 0.26 → 0.54, still zero clipping.**
 
-Соотношение эффектов к музыке при этом ушло с 9,0 к 7,0 — лучше, но правильного
-ответа тут нет: кому-то нужен звон попаданий, кому-то музыка. Поэтому вместо
-подобранного мной баланса в настройках появились **три ползунка** — общая,
-музыка, эффекты, — и они запоминаются вместе с остальными настройками. Панель
-пришлось уплотнить: высота макета всего 270 пикселей, кнопки ужаты с 20 до 18.
+The effects-to-music ratio moved from 9.0 to 7.0 — better, but there is no
+correct answer here: some people want the ring of hits, others the music. So
+instead of a balance I picked myself, settings gained **three sliders** —
+master, music, effects — remembered along with the rest of the settings. The
+panel had to be tightened: the layout is only 270 pixels tall, so buttons shrank
+from 20 to 18.
 
-Проверять ползунок эффектов пришлось по звуку, а не по коду: `gain.value` на
-этой шине не отражает автоматику — читается старое значение, и первый замер
-показал, что ручка «не работает». По выходу всё честно: 0,20 → RMS 0,015, 1,00 →
-0,079, отношение 5,3 при ожидаемых 5,0. Врал замер, а не игра — четвёртый раз за
-эту работу.
+The effects slider had to be checked by sound rather than by code: `gain.value`
+on that bus does not reflect automation — you read the old value, and the first
+measurement said the knob "does not work". By the output everything is honest:
+0.20 → RMS 0.015, 1.00 → 0.079, a ratio of 5.3 against an expected 5.0. The
+measurement lied, not the game — the fourth time during this work.
 
-### Боссы вдвое сильнее
+### Bosses twice as strong
 
-Мерка здесь не здоровье и не урон по отдельности, а **бюджет урона**: сколько
-шкал жизни герой примет за бой, если стоять и меняться ударами. Это единственное
-число, в котором обе стороны силы сходятся.
+The measure here is neither health nor damage separately but the **damage
+budget**: how many health bars the hero will take over a fight if he stands and
+trades blows. It is the only number in which both sides of strength meet.
 
-Удвоить и здоровье, и урон было бы **вчетверо** по этому счёту — и повторило бы
-ошибку, про которую в [`abyss.js`](src/systems/abyss.js) уже записано: «она не
-ломалась, она провисала — бои растягивались, но опасность не росла». Колосс
-превратился бы в 46-секундную рубку, убивающую с трёх ударов. Поэтому здоровье
-×1,45, урон ×1,40: бой опаснее ровно вдвое, а длиннее — меньше чем наполовину.
+Doubling both health and damage would have been **four times** by that count —
+and would have repeated the mistake already recorded in
+[`abyss.js`](src/systems/abyss.js): "it was not breaking, it was sagging — fights
+stretched out but danger did not grow". The Colossus would have become a
+46-second slog that kills in three hits. So health ×1.45, damage ×1.40: the fight
+is exactly twice as dangerous and less than half again as long.
 
-| босс | бой | ударов до смерти героя | бюджет |
+| boss | fight | hits until the hero dies | budget |
 |---|---|---|---|
-| Древень Корнегрив | 8,8 → 12,3 с | 9 → 7 | 0,9 → 1,7 шкалы (×1,92) |
-| Тинная Карга | 11,4 → 16,2 с | 8 → 6 | 1,6 → 3,2 (×2,00) |
-| Хранитель Стужи | 16,5 → 24,6 с | 7 → 5 | 2,5 → 5,2 (×2,07) |
-| Расплавленный Колосс | 23,1 → 32,9 с | 6 → 5 | 3,9 → 7,7 (×1,98) |
+| Rootgrave the Treant | 8.8 → 12.3 s | 9 → 7 | 0.9 → 1.7 bars (×1.92) |
+| The Silt Hag | 11.4 → 16.2 s | 8 → 6 | 1.6 → 3.2 (×2.00) |
+| Warden of the Frost | 16.5 → 24.6 s | 7 → 5 | 2.5 → 5.2 (×2.07) |
+| The Molten Colossus | 23.1 → 32.9 s | 6 → 5 | 3.9 → 7.7 (×1.98) |
 
-Подняты все девять боссов, включая ротацию Бездны: оставить их прежними значило
-бы сделать эндгеймовых стражей слабее биомных.
+All nine bosses were raised, including the Abyss rotation: leaving them as they
+were would have made the endgame guardians weaker than the biome ones.
 
-Кривая осталась растущей — 15,4 → 20,9 → 27,9 → 38,9 секунды в снаряжении
-«редкое», то самое, в котором игрок и приходит по новым потолкам редкости.
-Первый бой проверен отдельно: Древень бьёт на 56 при шкале героя в 205, то есть
-шесть ударов до смерти вместо девяти. Уклоняться теперь придётся, а не стоять.
+The curve stayed rising — 15.4 → 20.9 → 27.9 → 38.9 seconds in "rare" gear, the
+very gear the player arrives in under the new rarity caps. The first fight was
+checked separately: the Treant hits for 56 against a hero bar of 205, that is,
+six hits to death instead of nine. Dodging is now required rather than optional.
 
-### Пролом: сложность из местности, а не из здоровья
+### The Breach: difficulty from the terrain, not from health
 
-Третий акт должен был превзойти всё предыдущее. Самый простой способ это
-сделать — умножить здоровье мобов, и он же самый плохой: у нас уже записано,
-чем это кончилось на глубине — «бои растягивались, но опасность не росла».
-Поэтому Пролом набирает сложность двумя вещами, которых раньше не было.
+Act three had to exceed everything before it. The simplest way to do that is to
+multiply monster health, and it is also the worst: we already have it on record
+how that ended at depth — "fights stretched out but danger did not grow". So the
+Breach builds its difficulty out of two things that did not exist before.
 
-**Первая — земля.** У разломов дышат выбросы пустоты: 16 постоянных зон на
-зону, привязанных к клеткам жидкости. Пока стоишь внутри — теряешь здоровье и
-двигаешься на 38% медленнее; шаг наружу останавливает урон сразу, рывок
-проносит сквозь без потерь.
+**The first is the ground.** Void vents breathe near the rifts: 16 permanent
+zones per zone, tied to liquid tiles. While you stand inside you lose health and
+move 38% slower; a step outside stops the damage at once, and a dash carries you
+through for free.
 
-Урон считается **долей от максимума**, а не плоским числом, и это не
-косметика. Плоские 8 в секунду — это 3,3% здоровья на 8-м уровне и 0,8% на
-46-м: опасность исчезала бы ровно там, где она задумана, потому что герой
-добирает здоровье снаряжением. Пустоте всё равно, что на тебе надето — 3,5% за
-тик. Замер на живом герое: 21% здоровья за три секунды стояния, то есть в
-выбросе нельзя вести бой, но можно его пересечь.
+The damage is computed as a **fraction of maximum** rather than a flat number,
+and that is not cosmetic. A flat 8 per second is 3.3% of health at level 8 and
+0.8% at level 46: the danger would vanish exactly where it was intended, because
+the hero gains health from gear. The void does not care what you are wearing —
+3.5% per tick. Measured on a live hero: 21% of health for three seconds of
+standing, meaning you cannot fight inside a vent but you can cross one.
 
-Урон ведём тем же путём, что горение, а не через `takeDamage`. Тот выдаёт 0,42 с
-неуязвимости — постоянный выброс стал бы **укрытием**: стоишь в кислоте
-пустоты и наполовину не получаешь по морде от мобов. Он же отбрасывает от
-источника, то есть выталкивал бы из зоны сам, и решение «уйти или потерпеть»
-перестало бы быть решением игрока.
+The damage goes the same route as burning rather than through `takeDamage`. That
+one grants 0.42 s of
+invulnerability — a permanent vent would become **cover**: you stand in the acid
+of the void and take half as much in the face from the monsters. It also knocks
+you away from the source, so it would push you out of the zone by itself, and the
+decision "leave or endure" would stop being the player's decision.
 
-Край зоны пришлось переделать по замеру. Первая версия рисовала мягкое облако
-с кольцом, и сканирование строки пикселей через центр показало, почему оно не
-читалось: **внутри было ярче собственного края** — 226 против 190. Зона
-выглядела как пятно без границы, а игрок узнаёт радиус, только потеряв
-здоровье. Заливку приглушили втрое, кольцо усилили и продублировали тёмным
-контуром снаружи (земля Пролома идёт пятнами от почти чёрного до бледно-лилового,
-одной линии не хватает). После правки край даёт резкий пик 167 против 79–82 у
-соседних пикселей.
+The edge of the zone had to be redone by measurement. The first version drew a
+soft cloud with a ring, and scanning a row of pixels through the centre showed
+why it did not read: **the inside was brighter than its own edge** — 226 against
+190. The zone looked like a blot with no boundary, and the player learns the
+radius only by losing health. The fill was dimmed threefold, the ring
+strengthened and doubled with a dark contour on the outside (the ground of the
+Breach runs in patches from nearly black to pale lilac, and one line is not
+enough). After the change the edge gives a sharp peak of 167 against 79–82 at
+neighbouring pixels.
 
-**Вторая — обитатели.** Семь видов, и почти каждый чего-то требует:
+**The second is the inhabitants.** Seven kinds, and almost every one demands
+something:
 
-| Кто | Чем неудобен | Проходит за связку |
+| Who | What makes them awkward | Gets through per combo |
 |---|---|---|
-| Бледный страж | щит спереди, броня 0.5 | 25% |
-| Сердце Пролома | щит + броня, призывает | 37% |
-| Титан разлома | броня 0.42, держит отбрасывание | 72% |
-| Бледный кузнец | броня 0.34, разъедание | 77% |
-| Ловчий разлома | уклонение 22%, летает | 78% |
+| Pale Warden | shield in front, 0.5 armour | 25% |
+| The Breach Heart | shield + armour, summons | 37% |
+| Rift Titan | 0.42 armour, resists knockback | 72% |
+| Pale Smith | 0.34 armour, corrosion | 77% |
+| Rift Stalker | 22% dodge, flies | 78% |
 
-Замер попутно вскрыл настоящую дыру: **`dodge` из описания врага никогда не
-доходил до экземпляра**. В конструкторе стояло `this.dodge = 0`, а поле
-заполнялось только аффиксом элиты — то есть `resolveHit` читал ноль, и Ловчий с
-его 0.22 не уклонялся ни от одного удара. Тихая ошибка: в бою она выглядит как
-«враг просто слабее задуманного», без единой строчки в консоли. Заодно аффикс
-теперь **добавляет** уклонение, а не заменяет: раньше элитный Ловчий с аффиксом
-без уклонения терял своё.
+The measurement uncovered a real hole along the way: **`dodge` from an enemy's
+definition never reached the instance**. The constructor had `this.dodge = 0`,
+and the field was only filled by an elite affix — so `resolveHit` read zero, and
+the Stalker with its 0.22 dodged not a single blow. A silent bug: in combat it
+looks like "this enemy is just weaker than intended", without a line in the
+console. Affixes now also **add** dodge rather than replace it: an elite Stalker
+with an affix that has no dodge used to lose its own.
 
-**Босса пришлось резать.** Первая версия дала 147,6 с чистого размена — стенд
-сам это и поймал, у него порог 120 с. Это ровно губка: втрое дольше
-Расплавленного Колосса при том, что герой на 52-м уровне бьёт сильнее, чем на
-32-м. Здоровье снизили с 31 до 15 множителя; щит, броню и призыв оставили —
-они и есть сложность. Стало 72,5 с: самый долгий бой в игре, ×1,86 к Колоссу,
-но решается исполнением, а не выносливостью.
+**The boss had to be cut.** The first version gave 147.6 s of pure trading — the
+stand caught it itself, its threshold is 120 s. That is a sponge exactly: three
+times longer than the Molten Colossus, even though a level 52 hero hits harder
+than a level 32 one. Health was lowered from a multiplier of 31 to 15; the
+shield, the armour and the summoning stayed — they are the difficulty. It became
+72.5 s: the longest fight in the game, ×1.86 the Colossus, but decided by
+execution rather than endurance.
 
-Итог по замеру: Пролом жёстче предыдущего биома по обоим концам размена —
-рядовой убивается за 1,4 с против 1,1 у Тлеющей пустоши, а держит игрок
-**7 ударов** против 9 у пустоши, 8 у кряжа, 10 у топи и 21 у леса.
+The measured result: the Breach is harder than the previous biome at both ends of
+the trade — a regular enemy dies in 1.4 s against the Smoldering Waste's 1.1,
+while the player takes **7 hits** against the waste's 9, the ridge's 8, the
+mire's 10 and the forest's 21.
 
-### Добыча Пролома должна что-то делать
+### The Breach's loot has to do something
 
-Материал, который можно только продать, — половина материала. Бледный пепел и
-стекло разлома сначала были именно такими, и биом получался «убей и продай».
-Теперь у каждого по два конца.
+A material you can only sell is half a material. Pale ash and rift glass started
+out exactly like that, and the biome came out as "kill and sell". Each now has
+two ends.
 
-**Пепел** идёт с разбора эндгеймовых вещей (ранг 6, эпик и выше) и в два зелья,
-открытых ровно с 40-го — то есть с Пролома. **Стекло** снимают с Бледных
-кузнецов и Титанов, и куётся из него то же, что ковали они.
+**Ash** comes from salvaging endgame items (tier 6, epic and above) and goes into
+two potions unlocked exactly at level 40 — that is, at the Breach. **Glass** is
+taken from Pale Smiths and Titans, and what is forged from it is what they forged.
 
-**Ковка Пролома** — пятая вкладка в кузне и единственный способ получить
-свойство биома **выбором**, а не броском. С тварей оно тоже падает, но какое
-именно — решает удача; здесь игрок берёт нужное за 4 стекла, 6 пепла и 7200
-золота. Четыре стекла — это четыре Титана или кузнеца: дешёвый путь к
-легендарке обесценил бы и добычу, и вехи заточки.
+**Breach forging** is the fifth tab in the forge and the only way to get a biome
+property **by choice** rather than by a roll. It also drops from the monsters, but
+which one is decided by luck; here the player takes the one they need for 4
+glass, 6 ash and 7200 gold. Four glass is four Titans or Smiths: a cheap road to
+a legendary would devalue both the loot and the sharpening milestones.
 
-Пять свойств, и каждое отвечает на то, чем Пролом неудобен, а не просто
-прибавляет урон:
+Five properties, and each answers something that makes the Breach awkward rather
+than just adding damage:
 
-| Свойство | Что делает | Против чего |
+| Property | What it does | Against what |
 |---|---|---|
-| Створ | три удара подряд по одному врагу ломают щит на 4 с | Бледный страж, Сердце |
-| Верный глаз | враг не уклоняется чаще раза в 2 с | Ловчий разлома |
-| Пустотная кожа | урон от опасностей местности вдвое меньше | выбросы пустоты |
-| Шаг сквозь | рывок оставляет разлом: урон и замедление | толпа порождений |
-| Осколок Сердца | убийство гасит ближайший выброс на 6 с | арена в выбросах |
+| Breachmaker | three hits in a row on one enemy break its shield for 4 s | Pale Warden, the Heart |
+| True Eye | an enemy cannot dodge more than once every 2 s | Rift Stalker |
+| Voidskin | damage from terrain hazards halved | void vents |
+| Stepthrough | a dash leaves a rift: damage and slow | crowds of voidspawn |
+| Heartshard | a kill quiets the nearest vent for 6 s | an arena full of vents |
 
-Замер на стенде: щит стража пропускает 7 урона из 100 лёгким ударом, со
-Створом — 50, ×7,1. Уклонение Ловчего: 400 попаданий из 400 уходили в
-уклонение, с Верным глазом — ноль.
+Measured on the stand: a warden's shield lets 7 damage of 100 through on a light
+hit, with Breachmaker 50 — ×7.1. The Stalker's dodge: 400 hits out of 400 went
+into a dodge, with True Eye zero.
 
-**Заточку пришлось откатить.** Первая версия требовала стекло начиная с +5, и
-замер показал, чем это кончится: до +5 на редком оружии уходит ~53 тысячи
-золота и ~60 стволов на топливо — игрок доходит туда задолго до 40-го уровня. А
-+7 — это веха «уникальное свойство», ради которой оружие и держат долго.
-Отодвинуть её за Пролом значило бы сломать то, зачем вехи вообще делались. Все
-три вехи (3, 5, 7) остались где были; за Проломом только +7 → +8 — шаг, который
-ни одной вехи не даёт.
+**Sharpening had to be rolled back.** The first version required glass from +5
+onwards, and measurement showed how that would end: reaching +5 on a rare weapon
+takes around 53 thousand gold and about 60 weapons of fuel — the player gets
+there long before level 40. And +7 is the "unique property" milestone, the reason
+a weapon is kept for a long time. Pushing it behind the Breach would break what
+the milestones were made for in the first place. All three milestones (3, 5, 7)
+stayed where they were; only +7 → +8 sits behind the Breach — a step that grants
+no milestone at all.
 
-**Подсказка в кузне врала.** Внизу экрана ковки стояло «ковка не даёт
-уникальных свойств — их находят или берут заточкой на +7», и вкладка Пролома
-делала её ложной. Врущая подсказка хуже отсутствующей: игрок ей верит и не
-открывает вкладку. Теперь текст зависит от вкладки.
+**The hint in the forge lied.** At the bottom of the crafting screen stood
+"crafting does not grant unique properties — you find them or take them by
+sharpening to +7", and the Breach tab made it false. A lying hint is worse than
+no hint: the player believes it and never opens the tab. The text now depends on
+the tab.
 
-**Аудит добычи тоже пришлось учить.** Он проверяет, что каждое уникальное
-свойство достижимо, и честно сообщил о пяти недостижимых: свойства Пролома
-живут в отдельном пуле, как у Бездны, и в общий не попадают намеренно. Но
-«намеренно вне пула» — не то же самое, что «достижимо». Простое исключение
-выключило бы проверку: список рос бы, а проверять было бы нечего. Вместо этого
-аудит теперь проверяет оба настоящих пути — выпадение с обитателей биома и
-ковку — и заодно ловит обратное: рецепт, который кует несуществующее или чужое
-свойство.
+**The loot audit had to be taught as well.** It checks that every unique property
+is reachable, and honestly reported five unreachable ones: the Breach properties
+live in a separate pool, like the Abyss ones, and deliberately do not enter the
+common one. But "deliberately outside the pool" is not the same as "reachable". A
+simple exclusion would have switched the check off: the list would grow while
+there was nothing left to check. Instead the audit now checks both real routes —
+dropping from the biome's inhabitants and forging — and catches the converse as
+well: a recipe that forges a property that does not exist, or one belonging
+somewhere else.
 
-### Заточка: топливо выбирает игрок
+### Sharpening: the player chooses the fuel
 
-Три ствола на заточку подбирались сами — три слабейших по силе той же
-редкости, — а слоты показывали «?». Работало правильно и не работало как игра:
-игрок не видел, что именно сгорит, и не мог решить сам. «Слабейшее по числам»
-и «ненужное» — разные вещи: легендарка со скверными характеристиками может
-быть дорога свойством, а ковка Пролома теперь и вовсе делает свойство
-предметом выбора.
+Three weapons for sharpening were picked automatically — the three weakest by
+power of the same rarity — and the slots showed "?". It worked correctly and did
+not work as a game:
+the player could not see what would burn and could not decide for themselves.
+"Weakest by the numbers" and "not needed" are different things: a legendary with
+poor stats may be valuable for its property, and Breach forging now makes the
+property a matter of choice outright.
 
-Справа встала полоса своего оружия — только годного, по тому же правилу, что
-было у автоподбора. Показывать весь рюкзак и гасить негодное мы отвергли: к
-сороковому уровню там сотня вещей, и полоса серых иконок не объясняет правило,
-а прячет его. Правило написано словами под сеткой.
+A strip of your own weapons appeared on the right — only the eligible ones, by
+the same rule the auto-pick used. Showing the whole bag and greying out the
+ineligible was rejected: by level forty there are a hundred items in there, and a
+strip of grey icons hides the rule rather than explaining it. The rule is written
+in words under the grid.
 
-Перетаскивание и щелчок — **один путь, а не два обработчика**: нажал и отпустил
-на месте — вещь едет в первый свободный слот; нажал, увёл курсор, отпустил над
-слотом — это перетаскивание. Игрок не решает заранее, что он делает, он просто
-берёт вещь. Щелчок по занятому слоту снимает. Кнопка «Авто» осталась: ручной
-выбор не должен превращать привычное действие в три лишних клика.
+Dragging and clicking are **one path, not two handlers**: press and release in
+place and the item goes to the first free slot; press, move the cursor away and
+release over a slot and that is a drag. The player does not decide in advance
+what they are doing, they just pick up an item. A click on an occupied slot takes
+it back out. The "Auto" button stayed: choosing by hand should not turn a routine
+action into three extra clicks.
 
-Держим ссылки на сами предметы, а не индексы: между кадрами рюкзак
-перестраивается (продажа, подбор, разбор), и индекс начал бы указывать в чужую
-вещь. Перед каждым показом список чистится от того, чего уже нет, а `sharpen()`
-проверяет каждую вещь заново по тому же правилу — сжечь не то, что человек
-видел в слотах, хуже, чем не сжечь ничего.
+We keep references to the items themselves rather than indices: between frames
+the bag is rebuilt (selling, picking up, salvaging), and an index would start
+pointing at somebody else's item. Before every draw the list is cleaned of what
+is no longer there, and `sharpen()` checks each item again by the same rule —
+burning something other than what the person saw in the slots is worse than
+burning nothing.
 
-Замер на живой игре: автоподбор взял бы одно, игрок выбрал другое, и сгорели
-ровно три выбранных — рюкзак 16 → 13, ни одна из выбранных не осталась.
+Measured in the live game: the auto-pick would have taken one set, the player
+chose another, and exactly the three chosen ones burned — the bag went 16 → 13,
+and none of the chosen remained.
 
-Английская вёрстка поймала своё: счётчик страниц стоял в одной строке с
-подписью редкости, и «“legendary” only» наезжало на «1/2». На русском
-«легендарное» короче, и на нём это не было видно — подпись уехала под сетку.
+The English layout caught its own problem: the page counter sat on the same line
+as the rarity caption, and "“legendary” only" ran into "1/2". In Russian
+"легендарное" is shorter and it could not be seen there — the caption moved under
+the grid.
 
-### Оружие: профиль ничего не значил
+### Weapons: the profile meant nothing
 
-Аудит боя держал одну находку с самого своего появления: на 8-м уровне кинжал
-убивал за 1,5 с, копьё — за 2,5 с, ×1,66. Профиль видов оружия при этом
-задумывал разброс в ×1,04. Замер нашёл четыре причины, и все четыре — про то,
-что числа в профиле не означали написанного.
+The combat audit had held one finding since it first appeared: at level 8 a
+dagger killed in 1.5 s and a spear in 2.5 s, ×1.66. The weapon profile mean­while
+intended a spread of ×1.04. Measurement found four causes, and all four were
+about the numbers in the profile not meaning what they said.
 
-**Множитель атаки работал вполовину.** `atk` из профиля применялся один раз —
-при ковке, к урону самой вещи. Но урон вещи это ровно половина общей атаки
-(48–50% на всех уровнях, остальное — уровень и сила), а `spd` из того же
-профиля делил темп атаки целиком. То есть скорость шла в полную силу, а урон —
-вполовину. Теперь профиль множит и базу тоже, и `atk × spd` стало настоящим
-отношением урона в секунду.
+**The damage multiplier worked at half strength.** `atk` from the profile was
+applied once — at crafting, to the item's own damage. But an item's damage is
+exactly half of the total attack (48–50% at every level, the rest being level and
+strength), while `spd` from the same profile divided the attack rate in full. So
+speed applied at full force while damage applied at half. The profile now
+multiplies the base as well, and `atk × spd` became the real ratio of damage per
+second.
 
-**Скорость считалась дважды.** Профиль откладывал `spd` ещё и статом на вещи, а
-тот второй раз делил темп через `gear.spd/220`. Кинжалу это давало лишние 4,5%,
-топору отнимало 1,8%. Стат убран из базовых — он остаётся у аффиксов
-(«Быстрый») и украшений, где ничего не дублирует.
+**Speed was counted twice.** The profile also laid `spd` down as a stat on the
+item, and that divided the rate a second time through `gear.spd/220`. It gave the
+dagger an extra 4.5% and took 1.8% from the axe. The stat was removed from the
+base ones — it remains on affixes ("Swift") and trinkets, where it duplicates
+nothing.
 
-**Крит в профиль не входил.** У кинжала восемь единиц крита стоят ещё +4% урона
-в секунду, у лука четыре — +1,4%, и после первых двух починок ровно на эту
-величину они и оставались выше замысла. Учтено в их `atk`.
+**Crit was not part of the profile.** The dagger's eight points of crit are worth
+another +4% damage per second, the bow's four +1.4%, and after the first two
+fixes they stayed above the intent by exactly that. Now folded into their `atk`.
 
-**Посох обещал то, чего не давал.** Подсказка гласила «+сила магии», а никакого
-`magic` посох не получал вовсе: магия считается от `g.magic` и половины `g.atk`,
-и раз атака посоха ниже средней, он давал магии **меньше меча**. Обещание в
-подсказке — тоже часть правил, и теперь посох его выполняет.
+**The staff promised what it did not give.** The hint read "+magic power", yet the
+staff received no `magic` at all: magic is computed from `g.magic` and half of
+`g.atk`, and since a staff's attack is below average it gave **less magic than a
+sword**. A promise in a hint is part of the rules too, and the staff now keeps it.
 
-| | было | стало |
+| | was | now |
 |---|---|---|
-| разброс ближнего боя | ×1,49 | ×1,08 |
-| находка аудита (ур. 8) | ×1,66 | нет |
-| посох в магической сборке | ×0,98 от меча | ×1,15–1,20 |
+| melee spread | ×1.49 | ×1.08 |
+| audit finding (lvl 8) | ×1.66 | none |
+| staff in a magic build | ×0.98 of a sword | ×1.15–1.20 |
 
-Разброс ×1,08 держится на всех уровнях от 8 до 46 — раньше он гулял между
-×1,24 и ×1,66, потому что зависел от доли оружия в общей атаке.
+The ×1.08 spread holds at every level from 8 to 46 — it used to wander between
+×1.24 and ×1.66, because it depended on the weapon's share of the total attack.
 
-**Расплата нашлась в карточке предмета.** Убрав дублирующий стат скорости, мы
-убрали и последний признак того, что кинжал бьёт чаще: игрок видел «урон 52»
-против «урон 101» у топора и читал кинжал как строго худший. Теперь на карточке
-оружия есть строка **«урон в секунду»** — `урон × темп`, и она сравнивается со
-надетым так же, как остальные. Кинжал показывает урон 52 (▼−19) и урон в
-секунду 75 (▲+4): картина честная. Это число стало возможным только после
-починки — до неё `урон × темп` врало бы.
+**The price showed up on the item card.** By removing the duplicated speed stat
+we also removed the last sign that a dagger strikes more often: the player saw
+"damage 52" against an axe's "damage 101" and read the dagger as strictly worse.
+A weapon card now has a **"damage per second"** line — `damage × rate` — compared
+against the equipped item like every other stat. The dagger shows damage 52
+(▼−19) and damage per second 75 (▲+4): an honest picture. That number only became
+possible after the fix — before it, `damage × rate` would have lied.
 
-### Сборки: сила против разума
+### Builds: strength against intellect
 
-Пока мерили оружие, наткнулись на вопрос крупнее: не является ли разум
-ловушкой. Первый, ручной подсчёт сказал, что магическая сборка даёт **59%** от
-физической — приговор целой ветке развития.
+While measuring weapons we ran into a bigger question: is intellect a trap? The
+first, hand-rolled calculation said a magic build gives **59%** of a physical one
+— a death sentence for a whole branch of progression.
 
-Он был неверен. Магические умения бьют по площади, а ручная формула считала
-одну цель. Пятая за проект находка, оказавшаяся в мерке, а не в игре.
+It was wrong. Magic skills hit areas, and the hand formula counted a single
+target. The fifth finding in this project that turned out to be in the measure
+rather than in the game.
 
-Проверка переписана в аудит разделом 7 и меряет умения тем же стендом, что и
-раздел 6, — с настоящими целями, снарядами и зонами, по одной цели и по
-пятерым:
+The check was rewritten into the audit as section 7 and measures skills on the
+same stand as section 6 — with real targets, projectiles and zones, against one
+target and against five:
 
-| | по одной | по пятерым |
+| | one target | five targets |
 |---|---|---|
-| разум против силы, ур. 8 | ×0,91 | ×1,22 |
-| ур. 46 | ×0,87 | ×1,15 |
+| intellect against strength, lvl 8 | ×0.91 | ×1.22 |
+| lvl 46 | ×0.87 | ×1.15 |
 
-Это здоровый размен, а не ловушка: сила лучше по боссу, разум — по отряду.
-Порог в аудите поставлен по лучшему из двух случаев (сборка вправе быть
-заточена под одно) и срабатывает ниже 75% или выше 140%. Заодно раздел
-проверяет, нужен ли магической сборке посох — если с мечом она бьёт не хуже,
-вид оружия ни на что не влияет и обещание подсказки пустое.
+That is a healthy trade rather than a trap: strength is better on a boss,
+intellect on a pack. The audit's threshold is set on the better of the two cases
+(a build is entitled to specialise) and fires below 75% or above 140%. The same
+section also checks whether a magic build needs a staff at all — if it hits just
+as hard with a sword, the weapon type changes nothing and the hint's promise is
+empty.
 
-### Бой переехал на сервер
+### Combat moved to the server
+`db.js` has said it honestly for a long time: the server **stored** the character
+but verified no change at all — the snapshot arrived from the client wholesale.
+Everything could be faked: hits, loot, level. The same note says where to begin —
+with combat.
 
-В `db.js` про это давно записано честно: сервер **хранил** персонажа, но не
-проверял ни одного изменения — слепок приходил от клиента целиком. Подделать
-можно было всё: попадания, добычу, уровень. Там же сказано, с чего начинать, —
-с боя.
+No second engine appeared. The room already built the zone with the same
+generator and held the same `Enemy` instances; now it resolves a swing too, with
+`swingHits` and `resolveHit` from `systems/combat.js`, the same functions the
+single-player game strikes with and the stands measure with. It is not rules that
+diverge, it is copies; and there is no copy.
 
-Второго движка не появилось. Комната уже строила зону тем же генератором и
-держала тех же `Enemy`; теперь она считает и удар — функциями `swingHits` и
-`resolveHit` из `systems/combat.js`, теми же, которыми бьёт одиночная игра и
-которыми меряют стенды. Расходятся не правила, расходятся копии; копии нет.
+The client no longer reports who it hit. It says "I swung, here is my facing and
+which blow of the combo this is" — everything else is decided by the room: hits,
+damage, weapon marks, lifesteal, knockback, death and experience. A stream of
+`ev` events comes back (hit, dodge, death), from which the client plays the
+spectacle: sparks, numbers, sound. The same split as everywhere else in the game
+— rule apart, spectacle apart.
 
-Клиент больше не сообщает, кого задело. Он говорит «махнул, вот куда смотрю и
-какой это удар в связке» — остальное решает комната: попадания, урон, метки
-оружия, вампиризм, отбрасывание, смерть и опыт. Обратно приходит поток событий
-`ev` (попадание, промах, смерть), по которому клиент играет зрелище: искры,
-числа, звук. Разделение то же, что и во всей игре, — правило отдельно, зрелище
-отдельно.
+**The check is written as a dishonest client.**
+`tools/combat-online-check.js` connects to the room and swings **without sending
+any damage at all**. If the enemy loses health, the server is doing the maths; if
+not, the client had been doing it all along and we moved nothing. Measured:
+155 → 104 hp over twelve swings, six hit events, and out of forty consecutive
+swings the server accepted one — the cooldown holds.
 
-**Проверка написана недобросовестным клиентом.** `tools/combat-online-check.js`
-подключается к комнате и машет, **не присылая никакого урона вовсе**. Если у
-врага убывает здоровье — считает сервер; если нет — значит, всё это время
-считал клиент и мы ничего не перенесли. Замер: 155 → 104 hp за двенадцать
-взмахов, шесть событий попадания, из сорока взмахов подряд сервер принял один —
-откат держит.
+The first run found a hole of my own: the broadcast listed snapshot fields by
+name, and the new `ev` field simply did not reach the client — the snapshot
+carried it and the broadcast dropped it.
 
-Первый прогон нашёл собственную дыру: рассылка перечисляла поля снимка
-поимённо, и новое поле `ev` до клиента просто не доезжало — снимок его нёс, а
-рассылка теряла.
+A biome room is raised with a variable (`ROOM_BIOME=forest`): in the city there
+is nobody to measure combat against, it is safe by design. The same thing will be
+needed when parties go out into the zones.
 
-Комната биома поднимается переменной (`ROOM_BIOME=forest`): в городе мерить бой
-не на ком, он безопасен по устройству. Это же понадобится, когда в зоны пойдут
-отряды.
+**What is still missing.** The client only enters the shared world in the city,
+and there are no enemies there — so there is nowhere to route swings from the
+client yet, and no double counting either. The room can compute combat; sending a
+party into it is the next piece of work, together with the co-op rules: whose
+loot, how difficulty scales, who gets credit for a quest.
 
-**Чего ещё нет.** Клиент выходит в общий мир только в городе, а там врагов нет —
-поэтому проводить взмахи от клиента пока некуда, и двойного счёта тоже нет.
-Комната умеет считать бой; отправить в неё отряд — следующая работа, вместе с
-правилами коопа: чья добыча, как растёт сложность, кому засчитывается задание.
+### A room per biome
 
-### Комнаты на биом
+There was one room and it was the city forever. That is what kept co-op locked
+up: the server had learned to compute combat, but it had nowhere with anything to
+fight.
 
-Комната была одна и навсегда город. Это и держало кооп взаперти: считать бой
-сервер научился, а места, где есть с кем драться, у него не было.
+Now there are as many rooms as needed. One city for everyone — that is where
+people meet — and one per biome, alive for as long as somebody is in it. Empty
+ones are swept away: a zone in memory costs about a megabyte, and a dozen
+abandoned ones is already noticeable.
 
-Теперь комнат столько, сколько нужно. Город один на всех — там встречаются, — а
-на каждый биом заводится своя и живёт, пока в ней кто-то есть. Пустую сносим:
-зона в памяти стоит около мегабайта, и десяток брошенных уже заметен.
+Travel is leaving one room and entering another over the same connection, and the
+character is **rebuilt from the database**. A room does not hand it to its
+neighbour: the source of truth is the database, not the neighbour. The client
+sends `travel` with the same description of a place it uses to walk through gates
+in single player.
 
-Переезд — это выход из одной комнаты и вход в другую тем же соединением, а
-персонаж при этом **собирается заново из базы**. Комната не пересылает его
-соседней комнате: источник правды — база, а не сосед. Клиент шлёт `travel` с
-тем же описанием места, каким ходит по вратам в одиночной игре.
+The `combat-online-check` now walks the whole path: entered the city (zero
+enemies), asked to travel, arrived in the forest (39 enemies), walked to the
+target and killed it **without sending a single point of damage**. 73 hp → dead,
+five hit events, one death event, one swing accepted out of forty in a row.
 
-Проверка `combat-online-check` теперь проходит весь путь: вошёл в город (врагов
-ноль), попросил переезд, оказался в лесу (врагов 39), дошёл до цели и убил её,
-**не прислав ни единицы урона**. 73 hp → мертва, пять событий попадания, одно
-событие смерти, из сорока взмахов подряд принят один.
+**The stand was measuring the wrong thing again, and it cost an hour.** It picked
+a target from the first snapshot, walked to where it had been and measured its
+health there — while the enemy moved away in the meantime. The stand hit whoever
+happened to be nearby and reported "the server takes no health off", while the
+server was taking it off others. It now walks **after the target** rather than to
+a point, and closes the distance again between swings: the enemy fights back,
+runs off, gets knocked around. The seventh case in this project.
 
-**Стенд опять мерил не то, и это стоило часа.** Он выбирал цель по первому
-снимку, шёл в её тогдашнюю точку и там мерил её здоровье — а враг за это время
-уходил. Стенд бил тех, кто оказывался рядом, и докладывал «сервер не снял
-здоровья», хотя сервер исправно снимал его с других. Теперь он идёт **за
-целью**, а не в точку, и подходит заново между взмахами: враг отбивается,
-отбегает, его отбрасывает. Седьмой случай за проект.
+### Tools that lied
 
-### Инструменты, которые врали
+Two regression tools silently reported somebody else's breakage.
 
-Два регрессных инструмента молча показывали чужую поломку.
+`world-check` failed with "no welcome in 3 s". The cause was not in the server:
+the room had stopped admitting anyone by name alone once accounts appeared, and
+closed the connection with code 1008 before `welcome`. The check reported the
+symptom and stayed silent about the cause. It now takes a guest token the same
+way the title screen does, and prints the reason for a closure if one happens.
 
-`world-check` валился с «нет welcome за 3 с». Причина была не в сервере:
-комната перестала пускать по одному имени, когда появились учётные записи, и
-закрывала соединение кодом 1008 ещё до `welcome`. Проверка сообщала о симптоме
-и молчала о причине. Теперь она берёт гостевой токен тем же путём, что
-титульный экран, и печатает причину закрытия, если та случится.
+Next, the same tool declared that **the server does not move the hero** — 0 px in
+1.5 s. Also untrue: the room accepts not "I am going there" but a list of played
+steps `[mx, my, dt]` — that is how the time budget against speed hacks works. The
+tool was sending the old shape without `s`, `applyInput` returned on its first
+line, and the hero honestly stood still. After the fix: 91.8 px in 1.5 s,
+teleports rejected, no way off the edge of the map.
 
-Следом тот же инструмент объявил, что **сервер не двигает героя** — 0 px за
-1,5 с. Тоже неправда: комната принимает не «иду туда», а список отыгранных
-шагов `[mx, my, dt]` — так устроен бюджет времени против ускорителя.
-Инструмент слал старую форму без `s`, `applyInput` выходил на первой строке, и
-герой честно стоял на месте. После починки: 91,8 px за 1,5 с, телепорт
-отклоняется, за край карты не выйти.
+A permanently red check is worse than no check: people get used to it.
 
-Вечно красная проверка хуже отсутствующей: к ней привыкают.
+### Rarity by place
 
-### Редкость по местам
+Measurement showed that **rarity did not depend on place at all**: 0.9%
+legendaries from a regular monster and 3.8% from an elite — identically in the
+Emerald Forest at level one and in the Smoldering Waste at twenty-one. The first
+biome's boss dropped a legendary 40% of the time. There was no point in going
+further: the same things were dropping at your feet from the start.
 
-Замер показал, что **редкость не зависела от места вовсе**: 0,9% легендарок с
-рядового и 3,8% с элиты — одинаково в Изумрудном лесу на первом уровне и в
-Тлеющей пустоши на двадцать первом. Босс первого биома ронял легендарку в 40%
-случаев. Ходить дальше не было смысла: то же самое падало под ногами с начала.
+Every place now has its own ceiling:
 
-Теперь у каждого места свой потолок:
-
-| место | потолок | босс |
+| place | ceiling | boss |
 |---|---|---|
-| Велория, Изумрудный лес | редкая | эпическая |
-| Пепельная топь, Мёрзлый кряж | эпическая | легендарная |
-| Тлеющая пустошь | легендарная | легендарная |
-| катакомбы и Бездна | по уровню этажа | ступенью выше |
+| Veloria, Emerald Forest | rare | epic |
+| Ashen Mire, Frozen Ridge | epic | legendary |
+| Smoldering Waste | legendary | legendary |
+| catacombs and the Abyss | by floor level | one grade higher |
 
-Пороги совпадают с наградами за задания (необычная → редкая → эпическая):
-добыча не должна обгонять сюжет, иначе награда за задание выглядит подачкой.
-Босс получает ступень сверх потолка своего места — он и должен быть событием;
-лесной Древень теперь **всегда** роняет эпическую вещь вместо 40% шанса на
-легендарную и 60% на эпическую.
+The thresholds match the quest rewards (uncommon → rare → epic): loot must not
+outrun the story, otherwise a quest reward looks like a handout.
+A boss gets one grade above its place's ceiling — it is supposed to be an event;
+the forest Treant now **always** drops an epic instead of a 40% chance of a
+legendary and 60% of an epic.
 
-Потолок опускает выпавшую редкость, а не выбрасывает бросок: под потолком
-«редкая» доля редких вещей просто становится выше (14% против 10%).
+The ceiling lowers a rolled rarity rather than discarding the roll: under a
+"rare" ceiling the share of rare items simply rises (14% against 10%).
 
-Решение о редкости вынесено в одну функцию `dropRarity` — раньше оно было
-размазано по `dropLoot`, сундукам, алтарю и лавке, и закрыть их выборочно не
-вышло: сначала легендарки продолжили падать **рунами**, потом обнаружилось, что
-кузнец торгует ими на первом уровне. Лавка теперь оборачивает каждую строку
-ассортимента без исключений.
+The rarity decision was moved into a single `dropRarity` function — it used to be
+smeared across `dropLoot`, chests, the altar and the shop, and closing them
+selectively did not work: first legendaries kept dropping as **runes**, then it
+turned out the blacksmith was selling them at level one. The shop now wraps every
+line of its stock without exceptions.
 
-**Потолок опасен тем, что им легко что-нибудь запереть**, поэтому
-[`tools/loot-audit.js`](tools/loot-audit.js) проверяет не только правило, но и
-последствия: что каждое уникальное свойство и каждый комплект где-то достижимы
-(14 свойств из 17 — остальные три только из Бездны, так и задумано; 4 комплекта
-из 4), и что **герой входит в каждый биом в снаряжении, которое там позволяет
-драться**. Последнее считается настоящими правилами боя:
+**A ceiling is dangerous because it is easy to lock something away with it**, so
+[`tools/loot-audit.js`](tools/loot-audit.js) checks not only the rule but its
+consequences: that every unique property and every set is reachable somewhere (14
+properties of 17 — the other three only from the Abyss, as intended; 4 sets of
+4), and that **the hero enters each biome in gear that can fight there**. The last
+is computed with the real combat rules:
 
-| биом | приходит в | убивает рядового | держит ударов |
+| biome | arrives in | kills a regular | takes hits |
 |---|---|---|---|
-| Изумрудный лес | редком | 0,4 с | 21 |
-| Пепельная топь | редком | 1,5 с | 10 |
-| Мёрзлый кряж | эпическом | 1,5 с | 10 |
-| Тлеющая пустошь | эпическом | 1,5 с | 10 |
+| Emerald Forest | rare | 0.4 s | 21 |
+| Ashen Mire | rare | 1.5 s | 10 |
+| Frozen Ridge | epic | 1.5 s | 10 |
+| Smoldering Waste | epic | 1.5 s | 10 |
 
-Первую версию этой проверки пришлось выбросить: она сравнивала награду за
-задание с потолком биома и ругалась, что «необычная хуже редкой». Это
-бессмыслица — потолок это самое лучшее, что вообще может выпасть, а не то, что
-валяется под ногами. Проверка сравнивала подарок с недосягаемым.
+The first version of this check had to be thrown out: it compared a quest reward
+with the biome's ceiling and complained that "uncommon is worse than rare". That
+is nonsense — a ceiling is the best that can drop at all, not what lies around at
+your feet. The check was comparing a gift with the unattainable.
 
-Проверено и в живой игре: в лесу **ни одной легендарки** из четырёхсот убийств
-босса, двух тысяч элит и шести тысяч рядовых; в пустоши — 10,3% с босса и 0,2% с
-рядового.
+Verified in the live game too: in the forest, **not one legendary** from four
+hundred boss kills, two thousand elites and six thousand regulars; in the waste,
+10.3% from the boss and 0.2% from a regular.
 
-### Аудит спуска: сходится ли размен
+### The descent audit: does the trade add up?
 
-Модификаторы этажей были и раньше — одиннадцать штук, выбор из двух дверей на
-каждом этаже, плюс проклятые алтари и аффиксы элиты. Строить их заново было
-незачем. Незачем было и верить, что они сбалансированы: подпись «+90% награды»
-игрок видит, а цену в трудности не видит никто — она размазана по урону,
-скорости, броне, числу врагов и свету.
+Floor modifiers existed before — eleven of them, a choice of two doors on every
+floor, plus cursed altars and elite affixes. There was no reason to build them
+again. There was also no reason to believe they were balanced: the player sees
+"+90% reward" while nobody sees the price in difficulty — it is smeared across
+damage, speed, armour, enemy count and light.
 
-[`tools/descent-audit.js`](tools/descent-audit.js) считает эту цену настоящими
-правилами боя (`resolveHit`, `swingHits`, `Player.takeDamage`): во сколько раз
-этаж дольше «Тишины» и во сколько раз герой на нём хрупче. Нашлось три вещи.
+[`tools/descent-audit.js`](tools/descent-audit.js) computes that price with the
+real combat rules (`resolveHit`, `swingHits`, `Player.takeDamage`): how many times
+longer a floor is than "Lull" and how many times more fragile the hero is on it.
+Three things turned up.
 
-**Число награды перемножало несравнимые валюты.** `modReward` умножал добычу на
-золото на опыт: у «Алчности» ×2,6 добычи и ×3 золота превращались в **+680%**,
-хотя игрок получает 2,6 раза добычи *и* 3 раза золота, а не 7,8 раза чего-то.
-Теперь это средневзвешенное (добыча 0,5, золото и опыт по 0,25) — сводка трёх
-чисел в одно, а не их произведение.
+**The reward number multiplied incomparable currencies.** `modReward` multiplied
+loot by gold by experience: Greed's ×2.6 loot and ×3 gold turned into **+680%**,
+although the player gets 2.6 times the loot *and* 3 times the gold, not 7.8 times
+of something. It is now a weighted average (loot 0.5, gold and experience 0.25
+each) — a summary of three numbers into one rather than their product.
 
-**И не учитывало число врагов.** Добыча капает с убитых: вдвое больше врагов —
-вдвое больше поводов уронить вещь. Без этого «Полчище» показывало вдвое меньше,
-чем даёт на самом деле, а «Затишье» — вдвое больше.
+**And it ignored the number of enemies.** Loot drips from the dead: twice the
+enemies is twice the chances of an item dropping. Without that, "Horde" showed
+half of what it actually gives, and "Lull" twice as much.
 
-**«Алчность» была бесплатными деньгами.** Цена ×1,27 при награде, которой не
-было равных: 25,3 награды за единицу риска против 0,8 у «Полчища» — разрыв в
-тридцать два раза. Жадность теперь кусается: стражи гуще (×1,5) и бьют больнее
-(+30% получаемого урона). «Укрепление» же, наоборот, растягивало этаж почти
-вдвое и платило меньше всех — награда поднята под цену.
+**"Greed" was free money.** A price of ×1.27 against a reward with no equal: 25.3
+reward per unit of risk against Horde's 0.8 — a thirty-two-fold gap. Greed now
+bites: the guardians are thicker (×1.5) and hit harder (+30% damage taken).
+"Fortification", conversely, stretched a floor by nearly half again and paid the
+least — its reward was raised to match its price.
 
-| разрыв между лучшей и худшей дверью | было | стало |
+| gap between the best and worst door | was | now |
 |---|---|---|
-| 10-й этаж | ×32,4 | ×2,8 |
-| 30-й этаж | ×32,4 | ×2,6 |
-| 50-й этаж | ×32,4 | ×1,5 |
+| floor 10 | ×32.4 | ×2.8 |
+| floor 30 | ×32.4 | ×2.6 |
+| floor 50 | ×32.4 | ×1.5 |
 
-**Стенд видит не всё, и это записано в нём прямо.** Цена «Голода» — в зельях,
-которых герой не пьёт; «Мглы» — в обзоре, которого у стенда нет; «Травли» — в
-отряде элиты, а здесь один скелет. Такие модификаторы помечены и **исключены из
-приговора**: записать их в «награда без риска» было бы враньём стенда, а не
-находкой про игру. «Полость» и «Алчность» помечены как измеренные частично — их
-цена занижена, значит сделка выходит завышенной, и ошибка идёт в сторону
-строгости.
+**The stand does not see everything, and that is written into it directly.** The
+price of "Hunger" is in potions the hero does not drink; of "Gloom" in vision the
+stand does not have; of "Hunted" in an elite pack, and here there is one skeleton.
+Such modifiers are flagged and **excluded from the verdict**: writing them down as
+"reward without risk" would be the stand lying rather than a finding about the
+game. "Cavity" and "Greed" are marked as partially measured — their price is
+understated, so the deal comes out overstated, and the error leans towards
+strictness.
 
-### Бездна получила свои двери
+### The Abyss got its own doors
 
-Тот же аудит показал вырождение, которого никто не замечал: **пул дверей не
-зависел от глубины**. На пятидесятом этаже игрок видел ровно те же одиннадцать
-вариантов, что на третьем. Глубина росла, выбор — нет.
+The same audit showed a degeneration nobody had noticed: **the door pool did not
+depend on depth**. On floor fifty the player saw exactly the same eleven options
+as on floor three. Depth grew, choice did not.
 
-С 26-го этажа в рискованный пул добавляются три модификатора самой Бездны:
+From floor 26, three modifiers of the Abyss itself join the risky pool:
 
-- **Пасть** — врагов гуще и они быстрее;
-- **Жажда** — зелья мертвы, а раны глубже;
-- **Полость** — враги в панцире, и света почти нет.
+- **The Maw** — enemies are thicker and faster;
+- **Thirst** — potions are dead and wounds run deeper;
+- **Cavity** — enemies are shelled, and there is almost no light.
 
-Разных пар дверей стало **130 вместо 70**.
+Distinct door pairs went from 70 to **130**.
 
-### Сохранение: единственная необратимая ошибка
+### Saving: the one irreversible mistake
 
-Бой можно перебалансировать, зону перегенерировать, графику откатить. Стёртого
-персонажа не вернуть. При этом сохранение было самым простым местом в игре: один
-ключ `veloria.save.v1`, без копий и без проверок.
+Combat can be rebalanced, a zone regenerated, graphics rolled back. An erased
+character cannot be brought back. And yet saving was the simplest place in the
+game: one `veloria.save.v1` key, no copies and no checks.
 
-Сначала разобрался, чего именно бояться. Оборванной записи в localStorage не
-бывает — `setItem` либо прошёл целиком, либо бросил, и тогда старое значение
-цело. Настоящих способов потерять героя три, и защита у каждого своя:
+First I worked out what exactly to be afraid of. A torn write into localStorage
+does not happen — `setItem` either goes through completely or throws, and then the
+old value
+is intact. There are three real ways to lose a character, and each has its own
+defence:
 
-1. **игра записала испорченное поверх целого** → грубая проверка перед записью:
-   не прошла — старый сейв остаётся нетронутым;
-2. **чтение упало, и игра молча предложила начать заново** → резервные копии и
-   явное сообщение, из какой копии взяли и какой она давности;
-3. **браузер вычистил хранилище** (инкогнито, «удалить данные сайта», квота) →
-   выгрузка героя файлом, которую делает сам игрок.
+1. **the game wrote something corrupt over something whole** → a rough check
+   before writing: if it fails, the old save is left untouched;
+2. **reading failed and the game silently offered to start over** → backup copies
+   and an explicit message saying which copy was used and how old it is;
+3. **the browser cleared storage** (incognito, "delete site data", quota) → an
+   export of the character to a file, done by the player.
 
-Копии разносятся **по времени, а не по числу записей**. Игра сохраняется часто —
-автосейв каждые 45 секунд плюс каждый переход между зонами, — и три последние
-записи оказались бы все из последней минуты. От порчи, замеченной через полчаса,
-такие копии не спасают. Новая копия заводится, только если самой свежей уже
-больше десяти минут: три слота покрывают примерно полчаса игры.
+The copies are spaced **by time, not by number of writes**. The game saves often —
+an autosave every 45 seconds plus every zone transition — and the last three
+writes would all be from the last minute. Copies like that do not help against
+corruption noticed half an hour later. A new copy is only started if the freshest
+one is already more than ten minutes old: three slots cover roughly half an hour
+of play.
 
-Цена замерена: сейв весит 4 КБ при пустом рюкзаке и 25,6 КБ при набитом под
-завязку. Четыре копии — около 100 КБ, то есть 2% от пятимегабайтного лимита.
+The cost was measured: a save weighs 4 KB with an empty bag and 25.6 KB with one
+packed to the brim. Four copies is about 100 KB, that is 2% of the five-megabyte
+limit.
 
-**Проверка целостности ловит не всё, и я это выяснил на себе.** Вызвал
-сохранение с титульного экрана, где `player` ещё пустой, — и записал героя
-первого уровня поверх тридцать пятого. Данные были совершенно целые, проверке не
-к чему придраться. Поэтому добавлено второе правило: уровень у героя не падает
-никогда (смерть отнимает золото, а не уровень), значит падение уровня — верный
-признак, что пишут не того. Единственное исключение — `save({ fresh: true })` из
-«Новой игры».
+**The integrity check does not catch everything, and I found that out the hard
+way.** I called save from the title screen, where `player` is still empty — and
+wrote a level one hero over a level thirty-five one. The data was perfectly
+intact and the check had nothing to object to. So a second rule was added: a
+hero's level never falls (death takes gold, not levels), so a falling level is a
+reliable sign that the wrong thing is being written. The one exception is
+`save({ fresh: true })` from "New game".
 
-Тридцать пятый уровень, кстати, вернулся из резервной копии — система доказала
-себя на живом примере в первый же час.
+Level thirty-five, incidentally, came back from a backup — the system proved
+itself on a live example within the first hour.
 
-[`tools/save-check.js`](tools/save-check.js) — 39 проверок на настоящем
-хранилище: запись и чтение туда-обратно с легендарками и рунами, шесть видов
-порчи (все отвергнуты, герой цел), подъём из копии при разбитом основном слоте,
-разнос копий по времени, выгрузка и загрузка файлом, три вида чужого файла (все
-отвергнуты), понижение уровня, «новая игра» уносит и копии.
+[`tools/save-check.js`](tools/save-check.js) — 39 checks against real storage:
+a write-and-read round trip with legendaries and runes, six kinds of corruption
+(all rejected, the hero intact), recovery from a copy when the main slot is
+broken, spacing of copies by time, export and import as a file, three kinds of
+foreign file (all rejected), a level downgrade, and "new game" taking the copies
+with it.
 
-Три проверки из тридцати девяти я по дороге написал неверно: ждал нуля копий
-там, где первая копия правильно заводится сразу; ждал неизменной цепочки после
-серии записей, хотя одно смещение законно; и старил только основной слот, тогда
-как правило сравнивает его с копией — обе выходили одного возраста. Каждый раз
-врал стенд, а не код.
+Three checks out of thirty-nine I wrote incorrectly along the way: I expected
+zero copies where the first copy is correctly created immediately; I expected an
+unchanged chain after a series of writes, although one shift is legitimate; and I
+aged only the main slot, whereas the rule compares it against a copy — both came
+out the same age. Every time it was the stand that lied, not the code.
 
-В настройках появился раздел «Сохранение»: сводка (уровень, число копий,
-размер) и две кнопки — «Выгрузить» и «Загрузить».
+Settings gained a "Saving" section: a summary (level, number of copies, size) and
+two buttons — "Export" and "Import".
 
-### Аудит зон
+### The zone audit
 
-Ты сообщил, что на четвёртом этаже катакомб герой появляется в речке и не может
-двигаться. Искать такое вручную бессмысленно — зоны генерируются, и баг сидит не
-в конкретной карте, а в правиле расстановки. Поэтому написан
-[`tools/zone-audit.js`](tools/zone-audit.js): он строит полторы тысячи зон и
-проверяет заливкой по **настоящей коллизии** (той же `canBeAt`, которой ходит
-герой, а не по карте тайлов — дом стоит на проходимой земле, но сквозь него не
-пройти):
+You reported that on catacomb floor four the hero appears in a river and cannot
+move. Searching for that by hand is pointless — zones are generated, and the bug
+sits not in a particular map but in the placement rule. So
+[`tools/zone-audit.js`](tools/zone-audit.js) was written: it builds fifteen
+hundred zones and checks them with a flood fill over the **real collision** (the
+same `canBeAt` the hero walks with, rather than the tile map — a house stands on
+walkable ground but you cannot walk through it):
 
-- в точке появления можно стоять;
-- от неё достижимы выходы, спуск, арена босса, сундуки и жители;
-- никто не стоит внутри стены или объекта.
+- you can stand at the spawn point;
+- from it, the exits, the descent, the boss arena, chests and residents are all
+  reachable;
+- nobody stands inside a wall or an object.
 
-Найдено и починено пять причин, все — один и тот же изъян в разных местах:
-**точка выбиралась по карте, а стоял на ней потом кто-то с габаритом.**
+Five causes were found and fixed, all the same flaw in different places: **the
+point was chosen from the map, and then somebody with a body stood on it.**
 
-- **Герой в реке.** `spawnPoint` в подземелье ставился на два тайла ниже центра
-  комнаты без проверки, а вода входит в непроходимые. Ловилось на каждом шестом
-  этаже. Теперь ищется ближайшее место, где габарит помещается.
-- **Враги в камнях.** `z.findFree` не знает про объекты — по 2–9 тварей на зону
-  оказывались внутри валунов и колонн и просто не участвовали в бою. Добавлен
-  проход по настоящей коллизии, с габаритом каждого врага и поблажкой летающим.
-- **Спуск в пустоте.** На боссовых этажах лестница сдвигалась на четыре тайла
-  ниже центра комнаты — и если комната мелкая, уезжала за её стену. Этаж
-  превращался в тупик: зайти можно, спуститься нельзя. Ловилось на 15-м, 20-м и
-  30-м. Сдвиг ограничен размером комнаты плюс страховка по достижимости.
-- **Сундук в кармане.** Рельеф оставляет области, отрезанные стенами; сундук
-  туда виден на миникарте, но недостижим.
-- **Торговец за стеной.** То же самое, но хуже: к торговцу игрок идёт
-  целенаправленно и будет искать проход.
+- **The hero in a river.** `spawnPoint` in the dungeon was placed two tiles below
+  the room centre without a check, and water counts as impassable. Caught on every
+  sixth floor. Now the nearest place where the body fits is found.
+- **Enemies in rocks.** `z.findFree` does not know about objects — 2–9 monsters
+  per zone ended up inside boulders and columns and simply took no part in the
+  fight. A pass over the real collision was added, with each enemy's body and an
+  allowance for fliers.
+- **A descent in the void.** On boss floors the staircase shifted four tiles below
+  the room centre — and if the room is small it went past its wall. The floor
+  turned into a dead end: you can enter, you cannot descend. Caught on floors 15,
+  20 and 30. The shift is now bounded by the room's size, with a reachability
+  safety net.
+- **A chest in a pocket.** The terrain leaves areas cut off by walls; a chest
+  there is visible on the minimap but unreachable.
+- **A merchant behind a wall.** The same thing but worse: a player walks to a
+  merchant on purpose and will go looking for a way through.
 
-Отдельно стоит запомнить, как первая версия правки **не сработала**: проход
-расстановки стоял до `bakeSolid()`, а до него `canBeAt` не видит ни одного
-объекта и считает проходимым всё подряд. Из 140 врагов в стенах не сдвинулся ни
-один, и выглядело это как «правка не помогла».
+Worth remembering separately is how the first version of the fix **did not work**:
+the placement pass stood before `bakeSolid()`, and before that `canBeAt` sees no
+objects at all and considers everything walkable. Not one of the 140 enemies in
+walls moved, and it looked like "the fix did not help".
 
-Итог: 1490 зон, ноль проблем. Цена генерации не изменилась — биом 22 мс,
-подземелье 12 мс.
+Result: 1490 zones, zero problems. The cost of generation did not change — 22 ms
+for a biome, 12 ms for a dungeon.
 
-### Аудит содержимого
+### The content audit
 
-Аудит зон отвечал на вопрос «куда можно дойти».
-[`tools/content-audit.js`](tools/content-audit.js) отвечает на другой: «есть ли
-до чего доходить». Невыполнимое задание — тот же тупик, что этаж без спуска,
-только злее: игрок ищет часами и винит себя.
+The zone audit answered "where can you walk".
+[`tools/content-audit.js`](tools/content-audit.js) answers a different question:
+"is there anything worth walking to". An impossible quest is the same dead end as
+a floor with no descent, only crueller: the player searches for hours and blames
+themselves.
 
-Проверяется, что каждая цель задания где-то водится и доступна на том уровне, на
-котором задание выдают; что каждый материал из рецепта откуда-то падает и не из
-биома, который откроется много позже; что генератор не рождает оружие без урона,
-доспех без защиты и отрицательные характеристики. Прогон: 24 задания, 67
-рецептов, 15 материалов, 2100 сгенерированных предметов.
+It checks that every quest target exists somewhere and is available at the level
+the quest is given; that every material in a recipe drops from somewhere, and not
+from a biome that opens much later; and that the generator does not produce
+weapons with no damage, armour with no defence, or negative stats. The run: 24
+quests, 67 recipes, 15 materials, 2100 generated items.
 
-Нашлось три расхождения, и две трети из них оказались **изъяном самого
-инструмента**, а не игры:
+Three discrepancies turned up, and two thirds of them were **a flaw in the tool
+itself** rather than in the game:
 
-- «Слеза Бездны» будто бы не падает ниоткуда. На деле падает — с боссов Бездны,
-  но те не значатся ни в одной таблице биома: они появляются по ротации на
-  глубоких этажах, и проверка о них не знала.
-- Настоящей была одна: **«Эликсир ярости» открывался на 14-м уровне, а тлеющий
-  уголь для него падает только в Пепельной пустоши, куда пускают с 21-го.**
-  Шесть уровней рецепт висел в списке недостижимым. Передвинут на 20-й.
+- The "Abyss Tear" supposedly dropped from nowhere. In fact it does drop — from
+  Abyss bosses, but those appear in no biome table: they show up on rotation on
+  deep floors, and the check did not know about them.
+- One was real: **the "Elixir of Fury" unlocked at level 14, while the ember it
+  needs only drops in the Smoldering Waste, which opens at 21.** For six levels
+  the recipe hung in the list unreachable. Moved to level 20.
 
-Полезный вывод не про игру, а про метод: инструмент, который что-то находит,
-обязан сам пройти проверку на вменяемость. Две трети первого прогона были ложной
-тревогой, и приняв их за правду, я бы «чинил» то, что работает.
+The useful conclusion is not about the game but about method: a tool that finds
+something must itself pass a sanity check. Two thirds of the first run were false
+alarms, and taking them for truth I would have "fixed" what works.
 
-### Вход новичка: замер вернули в инструменты
+### New player onboarding: the measurement is back in tools
+The onboarding timing had been measured once before — and was lost together with
+the script, which lived in scratch files. A check that cannot be repeated is not
+a check: since then came act three, manual fuel selection, the reworked weapon
+profile and touch controls, and there was no way to say which of them had moved
+the opening. The measurement now lives in `tools/onboarding-audit.js`, next to
+the rest.
 
-Хронометраж входа однажды уже делался — и потерялся вместе со скриптом, который
-жил в черновиках. Проверка, которую нельзя повторить, проверкой не является: с
-тех пор появились третий акт, ручной выбор топлива, переделанный профиль оружия
-и управление с касаний, и что из этого сдвинуло вход, сказать было нечем.
-Теперь замер лежит в `tools/onboarding-audit.js`, рядом с остальными.
+The stand boots **the real game with no screen** — the same `Game`, the same
+quests, NPCs and hints — and drives a bot through it. It also had to be taught to
+draw every frame: menu hit areas are created **during drawing**, and without it
+no buttons exist. That brought a side benefit — the run fails if a new player's
+interface breaks anywhere.
 
-Стенд поднимает **настоящую игру без экрана** — тот же `Game`, те же квесты,
-НПС и подсказки — и ведёт по ней бота. Отдельно пришлось научить его рисовать
-каждый кадр: области нажатия в меню создаются **при отрисовке**, и без неё
-кнопок не существует. Это дало побочную пользу — прогон падает, если интерфейс
-новичка где-то ломается.
+The road to the first quest turned out longer than remembered: talk to the
+captain → "Quests" → the journal → "Accept". Four steps.
 
-Дорога к первому заданию оказалась длиннее, чем помнилось: поговорить с
-капитаном → «Задания» → журнал → «Принять». Четыре шага.
+**What this stand does not measure is written inside it.** The bot walks in
+straight lines and goes round obstacles blindly — there is no pathfinding in the
+game, and the enemies have none either. The price is visible in the report: about
+23 px/s against the hero's 62, meaning two thirds of the "walking" is eaten by
+detours. So the verdict is passed only on the first thirty seconds — those are
+played almost from a score and repeat from run to run — while everything after is
+printed as observation. The "long until the first fight" check carries its own
+caveat: it is the only one from the opening that depends on navigation, and it
+first asks whether the bot itself was working.
 
-**Чего этот стенд не мерит, написано в нём самом.** Бот ходит по прямой и
-обходит препятствия вслепую — поиска пути в игре нет, его нет и у врагов.
-Цена видна в отчёте: около 23 px/с при 62 у героя, то есть две трети «ходьбы»
-съедают обходы. Поэтому приговор выносится только по первым тридцати секундам —
-они разыграны почти по нотам и повторяются от прогона к прогону, — а всё
-дальнейшее печатается наблюдением. Отдельная оговорка у проверки «долго до
-первого боя»: она единственная из начала зависит от навигации, и сначала
-спрашивает, работал ли сам бот.
+What was found and what was done:
 
-Что нашлось и что сделано:
+- **The game never says how to move.** It explains runes, the attack combo,
+  rarity and stat points — and not a word about WASD. While only we played, that
+  did not matter; someone arriving from a link sees a hero and does not know what
+  to do with their hands. A **"How to play"** card appeared — first in the list,
+  fired immediately, with text that fits the device: on a phone there is no point
+  talking about WASD.
 
-- **Игра нигде не говорит, чем ходить.** Она объясняет руны, связку ударов,
-  редкость и очки развития — и ни слова про WASD. Пока играли свои, это не
-  мешало; человек, пришедший по ссылке, видит героя и не знает, что делать
-  руками. Появилась карточка **«Как играть»** — первая в списке, срабатывает
-  сразу, и текст зависит от устройства: на телефоне про WASD говорить незачем.
+- **Hints came back to back.** The condition let the next card through half a
+  second after the previous one left: 9.5 s on screen plus half a second — and a
+  newcomer got three cards in nineteen seconds, during their first fight, where
+  they are already busy. The first one never gets read. A 10 s gap appeared, and
+  it is counted **from when the card leaves** rather than from when it arrives: a
+  player who closes a hint early should not get the next one instantly. Measured:
+  it was 10 s between cards, now 20.
 
-- **Подсказки шли встык.** Условие пропускало следующую карточку через полсекунды
-  после ухода прежней: 9,5 с показа плюс полсекунды — и новичок получал три
-  карточки за девятнадцать секунд, в первом же бою, где он и так занят. Первую
-  не дочитывают. Появилась пауза в 10 с, и считается она **от ухода** карточки,
-  а не от появления: игрок, закрывший подсказку раньше, не должен получать
-  следующую мгновенно. Замер: было 10 с между карточками, стало 20.
+- **Text ran into text.** On the very first screen of a new game "...will give
+  you the first quest" collided with "Take: First Blood". The objective label now
+  remembers where it stands, and toasts go round it. The first fix immediately
+  pushed the line under the "How to play" card — a detour around one obstacle
+  that creates a second is not a fix — so they go round both, and the card's
+  rectangle is computed on the spot rather than taken from the drawing that
+  follows and would be a frame late.
 
-- **Текст налезал на текст.** На первом же экране новой игры «…даст первое
-  задание» упиралось во «Взять: Первая кровь». Подпись цели теперь запоминает
-  своё место, а уведомления её обходят. Первая правка тут же загнала строку под
-  карточку «Как играть» — обход одного препятствия, создающий второе, не
-  починка, — поэтому обходят оба, а прямоугольник карточки считается на месте, а
-  не берётся из отрисовки, которая идёт следом и опоздала бы на кадр.
+**One finding the measurement overturned.** The bot entered the forest at second
+17 and fought in the second minute, and the conclusion suggested itself: the first
+quest ("six slimes") leads past the nearest enemies to a particular species —
+slimes are only a quarter of the forest's population. A measurement across 60
+zones refuted it: 226 px to the nearest enemy, 294 px to the nearest slime — 1.3
+times further, five seconds on foot, and beyond 600 px it lands in one zone out of
+sixty. The delay was the bot's. The sixth case in this project where a finding
+turned out to be in the measure rather than in the game.
 
-**Одну находку замер отменил.** Бот входил в лес на 17-й секунде, а дрался на
-второй минуте, и напрашивался вывод: первое задание («шесть слизней») ведёт
-мимо ближайших врагов к нужному виду — слизни всего четверть населения леса.
-Замер по 60 зонам это опроверг: до ближайшего врага 226 px, до ближайшего
-слизня 294 px — в 1,3 раза дальше, пять секунд пешком, и дальше 600 px он
-оказывается в одной зоне из шестидесяти. Задержка была ботовой. Шестой случай
-за проект, когда находка оказалась в мерке, а не в игре.
+### The first ten minutes
 
-### Первые десять минут
+The opening was measured the same way as the economy: with a script, not by eye.
+A bot plays a new game — to the captain, take the quest, into the forest, into a
+fight — and writes a chronicle by seconds. The real game loop is frozen for the
+duration of the measurement: otherwise the game lives between the bot's steps and
+the hero manages to die while standing next to a monster.
 
-Вход измерен так же, как экономика: скриптом, а не на глаз. Бот проходит новую
-игру — к капитану, за задание, в лес, в бой — и пишет хронику по секундам.
-Настоящий игровой цикл на время замера замораживается: иначе игра живёт между
-шагами сама и герой успевает погибнуть, стоя вплотную к твари.
+What the first run showed and what was done about it:
 
-Что показал первый прогон и что с этим сделано:
+- **Loading took 0.55 s, and a quarter of it was wasted.** Of the loader's four
+  steps, two — "picking the palette" and "lighting the torches" — did nothing,
+  yet every step waits two frames. Two steps remain, exactly matching the real
+  work (baking props 193 ms, monsters 118 ms); the waiting fell from 134 ms to 67.
 
-- **Загрузка 0,55 с, и четверть её впустую.** Из четырёх шагов загрузчика два —
-  «подбираем палитру» и «зажигаем факелы» — не делали ничего, но каждый шаг
-  ждёт по два кадра. Шагов осталось два, ровно по числу настоящих работ
-  (запекание реквизита 193 мс, тварей 118 мс); ожидание сократилось со 134 мс
-  до 67.
+- **Twenty-four seconds to the first blow, sixteen of them walking.** The captain
+  who gives the first quest is not visible from the starting point; from him to
+  the forest gate is another screen and a half. No marker, no arrow — the player
+  walked at random. An **objective pointer** appeared (`systems/objective.js`):
+  one point for the whole game, drawn in two places — a diamond above the target
+  while it is on screen, and an arrow with a label at the edge when it has left —
+  plus a pulsing mark on the minimap. The order is deliberate: first "deliver what
+  is done", then "take something new", and only then "go and do it" — a player
+  with a completed quest most often does not remember who to bring it to.
 
-- **Двадцать четыре секунды до первого удара, шестнадцать из них — ходьба.**
-  Капитан, который даёт первое задание, не виден со стартовой точки; от него до
-  ворот в лес ещё полтора экрана. Ни метки, ни стрелки — игрок шёл наугад.
-  Появился **указатель цели** (`systems/objective.js`): одна точка на всю игру,
-  которую рисуют в двух местах — ромбом над целью, пока она в кадре, и стрелкой
-  с подписью у края, когда ушла за него, плюс пульсирующая метка на миникарте.
-  Порядок намеренный: сначала «отнести готовое», потом «взять новое», и только
-  потом «идти делать» — игрок с выполненным заданием чаще всего не помнит, кому
-  его нести.
+- **An elite within the first two screens.** Points of interest were placed no
+  closer than 240 px from the portal, and a "pack leader's lair" puts an elite
+  three levels above the zone: in a quarter of the runs the nearest creature to a
+  level one hero (103 hp, 25 damage) was an elite with 1092 hp and 41 damage —
+  forty-four hits to kill, three to die. The points were pushed out to 460 px, and
+  a **shallows** appeared at the entrance: in the first 420 px the level is pinned
+  to the biome's lower bound, affixes are removed and elites are evicted. That
+  pass stands at the very end of the generator — spawns are added in four
+  different places, and a change in the middle missed half of them.
 
-- **Элита в первых двух экранах.** Точки интереса ставились не ближе 240 px от
-  портала, а «логово вожака» кладёт элиту на три уровня выше зоны: в четверти
-  прогонов ближайшей тварью к герою первого уровня (103 hp, 25 урона) была элита
-  с 1092 hp и 41 уроном — сорок четыре удара, чтобы убить, три, чтобы умереть.
-  Точки отодвинуты на 460 px, а у входа появилась **отмель**: в первых 420 px
-  уровень прижат к нижней границе биома, аффиксы сняты, элита выселена. Проход
-  стоит в самом конце генератора — спавны добавляют четыре разных места, и
-  правка в середине половину из них не заставала.
+  Measured across 40 fresh zones per biome: in the shallows the maximum is
+  `zone level − 1`, zero elites, and the nearest elite no closer than 462 px (was
+  228). The distance to the first enemy did not change — 240 px, the same opening
+  pace.
 
-  Замер по 40 свежим зонам на биом: в отмели максимум `уровень зоны − 1`, элит
-  ноль, ближайшая элита не ближе 462 px (было 228). Расстояние до первого врага
-  не изменилось — 240 px, темп входа тот же.
+- **The first hint popped up at second zero.** "Skills are runes" fired on having
+  a rune in the bag, and the hero starts the game with one: the card explained
+  skill slots to somebody who had not taken a step. The condition became "has a
+  rune and is in a fight" — it now arrives at second 20, in the first skirmish.
 
-- **Первая подсказка выскакивала на нулевой секунде.** «Умения — это руны»
-  срабатывала по руне в рюкзаке, а герой начинает игру с руной: карточка
-  объясняла слоты умений человеку, который ещё не сделал ни шагу. Условие стало
-  «есть руна и идёт бой» — теперь она приходит на 20-й секунде, в первой стычке.
-
-Хроника после правок (первая минута, сравнение с прежней):
+The chronicle after the changes (the first minute, compared with the old one):
 
 ```
-подсказка про руны   0 с → 20 с
-первое убийство     24 с → 22 с
-цель задания        76 с → 31 с
-второй уровень      96 с → 71 с
-первая смерть       55 с → не случилась
+rune hint            0 s → 20 s
+first kill          24 s → 22 s
+quest objective     76 s → 31 s
+second level        96 s → 71 s
+first death         55 s → did not happen
 ```
 
-Бот намеренно туповат: не отступает, не жмёт `F`, а на щитоносце вообще
-застревает — числа после первой минуты о балансе не говорят. Время до первого
-удара от его умений не зависит, и именно оно мерялось.
+The bot is deliberately dim: it does not retreat, does not press `F`, and gets
+stuck outright on a shield bearer — the numbers after the first minute say nothing
+about balance. The time to the first blow does not depend on its skill, and that
+is exactly what was measured.
 
-### Два языка
+### Two languages
 
-Русский и английский, переключаются в «Настройках» без перезагрузки. Ключ
-словаря — **сама русская строка**, а не выдуманный идентификатор: в коде
-остаётся живой текст, который видно при чтении, а не `t('menu.pause.save')`.
+Russian and English, switched in Settings without a reload. The dictionary key is
+**the Russian string itself** rather than an invented identifier: what stays in
+the code is live text you can see while reading, not `t('menu.pause.save')`.
+Translation is substituted **inside `text()`** rather than at the call sites.
+Measured before the work: of 901 occurrences of Russian strings, 833 reach
+drawing untouched, so one change at the drawing level covered them all. Only 13
+places had to be touched explicitly, where a name is interpolated into a string.
 
-Перевод подставляется **внутри `text()`**, а не в местах вызова. Замер до
-работы: из 901 вхождения русских строк 833 доходят до отрисовки нетронутыми,
-поэтому одна правка на уровне отрисовки покрыла их все. Явно пришлось тронуть
-только 13 мест, где в строку подставляется имя.
+Three kinds of composite that do not exist in the dictionary as a whole are taken
+apart on the fly:
 
-Три вида склеек, которых нет в словаре целиком, разбираются на лету:
+- **Item names.** "Steel Blade of Fury" is assembled on drop and lies in the save
+  in that form. All combinations cannot be written down — there are thousands:
+  seven tiers by six weapon types, twenty prefixes in four grammatical genders and
+  ten suffixes. A dictionary miss is decomposed into prefix, stem and suffix, and
+  each part is translated separately. That also fixes **old saves**: the Russian
+  string sitting in one is translated the same way as fresh loot.
+- **Numbers.** "FLOOR 7", "+240 experience", "XP 1.2K / 3K" — numbers are replaced
+  with placeholders, a translation is looked up by the `FLOOR {0}` pattern, and
+  the numbers are put back.
+- **Contract descriptions.** The string used to be assembled at issue time and go
+  into the save. Now the save holds a template key and the fields that were
+  already there, and the text is assembled when shown.
 
-- **Имена предметов.** «Стальной клинок ярости» собирается при выпадении и в
-  таком виде лежит в сохранении. Записать все сочетания нельзя — их тысячи:
-  семь рангов на шесть видов оружия, двадцать приставок в четырёх родах и
-  десять окончаний. Промах по словарю разбирается на приставку, основу и
-  окончание, каждая часть переводится отдельно. Заодно это чинит **старые
-  сохранения**: лежащая там русская строка переводится так же, как свежая
-  добыча.
-- **Числа.** «ЭТАЖ 7», «+240 опыта», «XP 1.2K / 3K» — числа заменяются метками,
-  по образцу `ЭТАЖ {0}` ищется перевод, числа возвращаются на места.
-- **Описания контрактов.** Раньше строка склеивалась при выдаче и уходила в
-  сейв. Теперь в сейве лежит ключ шаблона и уже имевшиеся поля, а текст
-  собирается при показе.
+Verified with a hook in `t()`: a pass over every screen — title, settings, pause,
+six journal tabs, all merchants and their shops, four forge tabs in every
+category, fusing, the gates, the descent doors, the altars, death, eighty item
+and rune cards — left **zero** untranslated strings.
 
-Проверено крючком в `t()`: прогон по всем экранам — титул, настройки, пауза,
-шесть вкладок журнала, все торговцы и их лавки, четыре вкладки кузни во всех
-категориях, слияние, врата, двери спуска, алтари, смерть, восемьдесят карточек
-предметов и рун — оставил **ноль** непереведённых строк.
+Layout: English is on average **the same width** as Russian (measured across 860
+strings at three sizes), and longer in 38% of cases. Panels with paragraphs
+compute their height from the number of lines and grow by themselves. Button
+labels are now clipped to the button's width — buttons here are fixed width, and
+fitting them per language separately is more expensive than clipping once in the
+widget itself.
 
-Вёрстка: английский в среднем **той же ширины**, что русский (замер по 860
-строкам на трёх кеглях), длиннее в 38% случаев. Панели с абзацами считают высоту
-от числа строк и растут сами. Подписи кнопок теперь режутся по ширине кнопки —
-кнопки тут фиксированной ширины, и подгонять их под каждый язык отдельно дороже,
-чем обрезать один раз в самом виджете.
+### The font: percent signs sticking together
 
-### Шрифт: слипающиеся проценты
+There is no font file: the system monospace is drawn into a buffer and cut by an
+alpha threshold of 118 — the smoothing disappears and crisp pixels remain. The
+threshold swells round glyphs by a pixel, and the pairs `00`, `0%`, `40%` merge
+into a single blob. Measured by columns: of twenty-one volume values,
+**sixteen** stick together, and the same trouble affects every percentage in the
+game — "crit 25%", "−30%".
 
-Шрифта-файла нет: системный моноширинный рисуется в буфер и срезается по порогу
-альфы 118 — сглаживание пропадает, остаются чёткие пиксели. Порог раздувает
-округлые глифы на пиксель, и пары `00`, `0%`, `40%` склеиваются в одно пятно.
-Замерено по колонкам: из двадцати одного значения громкости слипаются
-**шестнадцать**, и та же беда у всех процентов в игре — «крит 25%», «−30%».
+Raising the threshold is not an option: at 160 the pairs finally separate, but
+across all glyphs at four sizes `N`, `m`, `ё` and the separator dot `·` — of
+which the interface is full — fall apart. The defect was not cosmetic: on the
+character sheet "−9% damage" read as "−94", because the `%` merged with the nine
+(checked on a live character — damage reduction there is 9.0%).
 
-Поднять порог нельзя: на 160 пары наконец расходятся, но по всем знакам на
-четырёх размерах рассыпаются `N`, `m`, `ё` и точка-разделитель `·`, которой в
-интерфейсе полно. Дефект был не косметический: в листе героя «−9% урона» читалось как «−94»,
-потому что `%` сливался с девяткой (проверено на живом персонаже — снижение
-урона там 9,0%).
+**Fixed by moving the interface to a vector font** — there is nothing left to cut
+by a threshold. The pixel font remains only in the world: damage numbers and the
+plates above enemies must live in the same grid as the sprites, and there is
+nothing there to stick together — they are short numbers without percent signs.
 
-**Починено переездом интерфейса на векторный шрифт** — резать по порогу больше
-нечего. Пиксельный шрифт остался только в мире: цифры урона и таблички над
-врагами обязаны жить в той же сетке, что и спрайты, и там слипаться нечему —
-это короткие числа без процентов.
+### Impassability
 
-### Непроходимость
+Terrain is by 16×16 tiles: wall, water, cliff. **Objects are per pixel.** The
+object's blocking rectangle used to be baked into tiles too, and a 56×18 rectangle
+under a house swelled to 80×32: an invisible wall stood around every building, up
+to 10 pixels at the sides and a whole tile below. Tiles remain only as an index —
+each holds the numbers of the rectangles crossing it, so one or two need checking,
+and a single check costs 0.05 µs.
 
-Рельеф — по клеткам 16×16: стена, вода, обрыв. **Объекты — попиксельно.** Раньше
-блок объекта тоже запекался в клетки, и прямоугольник 56×18 под домом раздувался
-до 80×32: вокруг каждой постройки стояла невидимая стена до 10 пикселей по бокам
-и целую клетку снизу. Клетки остались только индексом — в каждой лежат номера
-пересекающих её прямоугольников, так что проверить надо один-два, и одна проверка
-стоит 0,05 мкс.
+The blocking strip (`footBlock`) ends **7 pixels above the bottom of the sprite**.
+That is not taste but a consequence of the body model: a creature is defined by a
+point at its feet and a height upwards (the hero's is 11×9), so a strip flush with
+the bottom of the sprite would push the hero away by those 9 pixels as well.
+Measured: the approach to buildings was 11–17 px, it is now exactly 2 px on every
+side; walkable ground in the forest grew by a third, and unreachable chests and
+exits went from seven to zero.
 
-Полоса блока (`footBlock`) кончается **на 7 пикселей выше низа спрайта**. Это не
-вкус, а следствие габаритов: существо задаётся точкой ног и высотой вверх (у
-героя 11×9), поэтому полоса вровень с низом спрайта отодвигала бы героя ещё на
-эти 9 пикселей. Замерено: подход к постройкам был 11–17 px, стал ровно 2 px по
-всем сторонам; проходимой земли в лесу стало на треть больше, а недостижимых
-сундуков и выходов — с семи до нуля.
+## How the picture works
 
-## Как устроена картинка
+The frame pipeline: ground → liquid glints → decals → Y-sorting (shadows, props,
+creatures) → projectiles → particles → light (multiply) → bloom (additive) →
+weather → two-tone grading → vignette → interface.
 
-Конвейер кадра: земля → блики жидкости → декали → сортировка по Y (тени, реквизит,
-существа) → снаряды → частицы → свет (multiply) → bloom (additive) → погода →
-двухтоновая коррекция → виньетка → интерфейс.
-
-- **Тайлы** генерируются блоками 5×5 (скалы — 8×8) и берутся по `(x%n, y%n)`, поэтому
-  рисунок перетекает через границы клеток. Стыки типов земли растушёвываются
-  дизером Байера **только вдоль общей грани**. Мостовая города и полы подземелья —
-  клеточный шум с настоящими швами между камнями.
-- **Крупный масштаб** задаёт отдельный слой освещённости поверх всей карты. Шум для
-  него — с искажением области: обычный value-noise выровнен по решётке и читается
-  как прямоугольные блоки.
-- **Направленный свет**: контур + подсветка кромки запекаются в каждый спрайт, а тень
-  рисуется в реальном времени — силуэт со сдвигом и сжатием. В подземелье солнце
-  другое: тень почти под ногами.
-- **Bloom** берёт яркие места самого кадра (уменьшенная копия возводится в 4-ю степень)
-  и складывается обратно двумя ступенями размытия — светятся факелы, лава, магия и лут.
-- **Движение**: деревья, кусты и трава качаются сдвиговым преобразованием, растущим
-  к верхушке; высокий объект, за которым стоит герой, становится полупрозрачным.
-- **Твари** собираются не из плоских фигур: базовый кирпич — «шар» из четырёх слоёв
-  эллипсов со смещением к свету. У зверей дальняя пара лап на тон темнее ближней,
-  у големов торс сложен из перекрывающихся обломков со светлой верхней и тёмной
-  нижней кромкой (раскладка детерминирована сидом, иначе камни дрожали бы).
-- **Отражения**: объект у самой воды рисуется перевёрнутой копией, нарезанной
-  горизонтальными полосами со смещением по синусу — получается рябь. Обрезается
-  по глубине водной полосы под ним.
-- **Световые шахты** в катакомбах — полосы с промежутками, поэтому тень прутьев
-  решётки читается без отдельного слоя затемнения; в лучах кружится пыль.
-  Наклон луча совпадает с направлением теней.
+- **Tiles** are generated in 5×5 blocks (rocks in 8×8) and sampled at `(x%n, y%n)`,
+  so the pattern flows across tile boundaries. Seams between ground types are
+  dithered with a Bayer matrix **only along the shared edge**. The city's cobbles
+  and the dungeon's floors are cellular noise with real joints between stones.
+- **The large scale** is set by a separate lighting layer over the whole map. Its
+  noise is domain-warped: plain value noise is aligned to a grid and reads as
+  rectangular blocks.
+- **Directional light**: an outline plus a rim highlight are baked into every
+  sprite, while the shadow is drawn in real time — the silhouette, offset and
+  squashed. In the dungeon the sun is different: the shadow sits almost underfoot.
+- **Bloom** takes the bright places of the frame itself (a downscaled copy raised
+  to the fourth power) and adds them back through two blur stages — torches, lava,
+  magic and loot glow.
+- **Motion**: trees, bushes and grass sway with a shear transform that grows
+  towards the top; a tall object with the hero behind it becomes translucent.
+- **Creatures** are not assembled from flat shapes: the basic brick is a "sphere"
+  of four layers of ellipses offset towards the light. On beasts the far pair of
+  legs is a shade darker than the near one; on golems the torso is built from
+  overlapping fragments with a light top edge and a dark bottom one (the
+  arrangement is seeded deterministically, otherwise the stones would jitter).
+- **Reflections**: an object right at the water's edge is drawn as an inverted
+  copy sliced into horizontal bands offset by a sine — which gives ripples. It is
+  clipped by the depth of the water strip beneath it.
+- **Light shafts** in the catacombs are bands with gaps, so the shadow of the
+  grate's bars reads without a separate darkening layer; dust turns in the beams.
+  The tilt of the beam matches the direction of the shadows.
 
 ---
 
-## Автор
+## Author
 
-**[therealden4700](https://github.com/therealden4700)** — замысел, код, графика,
-звук, баланс.
+**[therealden4700](https://github.com/therealden4700)** — concept, code, art,
+sound, balance.
 
-© 2026 therealden4700. Все права защищены.
+© 2026 therealden4700. All rights reserved.
 
-Файла лицензии в репозитории нет намеренно: смотреть и разбирать код можно
-свободно, на переиспользование в своих проектах нужно спросить. Если это
-изменится, здесь появится `LICENSE`.
+There is deliberately no licence file in the repository: looking at the code and
+taking it apart is free, reusing it in your own projects needs a word first. If
+that changes, a `LICENSE` will appear here.
