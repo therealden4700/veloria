@@ -1712,11 +1712,77 @@ A biome room is raised with a variable (`ROOM_BIOME=forest`): in the city there
 is nobody to measure combat against, it is safe by design. The same thing will be
 needed when parties go out into the zones.
 
-**What is still missing.** The client only enters the shared world in the city,
-and there are no enemies there — so there is nowhere to route swings from the
-client yet, and no double counting either. The room can compute combat; sending a
-party into it is the next piece of work, together with the co-op rules: whose
-loot, how difficulty scales, who gets credit for a quest.
+### The client hands combat over
+
+The room could compute combat; the game was still computing it for itself. Now
+the client, once it is in a room outside the city, stops resolving its own
+swings: it sends "I swung, here is the combo and my facing", and takes hits,
+damage, deaths and enemy positions from the snapshot. Its own hero it still
+moves itself — otherwise every keypress would wait for the network — but nobody
+else's health is its business any more.
+
+**Both sides had to build the same zone, and they did not.** The first
+measurement in the browser: 43 enemies at the client, 39 in the snapshot. Two
+formulas for the biome seed had grown up in two places — `(worldSeed ^
+id.length*7919) + code*131` at the client, `seed ^ 0x2a1d` at the room. While
+people played alone that bothered nobody. In a shared world the snapshot points
+at an enemy **by number**, and with different lists a player would see one enemy
+and hit another. There is one rule now, `zoneSeedFor`, and all three kinds of
+place go through it — city, biome and dungeon. Measured after: 39 = 39, and for
+each of the 39 the kind and the position match to within 3 px.
+
+**The first green light was the stand lying.** The check compared `enemy.type`
+against the snapshot's `t` and reported "39 of 39 match" — while the client's
+field is `key` and the snapshot's is `k`. It was comparing `undefined` with
+`undefined`. The eighth case in this project where the finding turned out to be
+in the measure. Now it compares the kind and the coordinates, and those cannot
+both be absent.
+
+**A real bug came out of it.** The number in the snapshot is the enemy's place in
+the room's list, and the room's list never thins out — the client's does, it
+sweeps corpses away after 1.2 s. After the first death every number after it
+shifted by one. The number is now **the enemy's own**, handed out at birth and
+carried on the creature, and the client looks it up by that rather than by a
+position in an array that changes underneath it.
+
+**Whose kill.** With combat on the server, the client learns of a death by the
+enemy vanishing from the snapshot — and it was handing out loot, experience and
+quest credit for **everyone's** kills, including other players'. The room already
+says who struck the blow; the client now checks. Verified with two clients: one
+sat in the forest doing nothing while the other killed. The kill arrived (39 → 38
+alive), and the observer got zero experience, zero gold, no kill counted and
+nothing in the bag. The stand guards the field: the `ev` field has been dropped
+by the broadcast once already, and the whole loot rule hangs on this one.
+
+### Standing too close, and swinging through the enemy
+
+The stand failed one run in four: the target was 9 px away, and out of fourteen
+swings not one hit. Measured on the real rules — an enemy walked around the hero
+in a circle, the hero facing straight at it:
+
+| distance | swings that hit |
+|---|---|
+| 4 px | 26% |
+| 8 px | 43% |
+| 10 px | 54% |
+| 12 px and beyond | 100% |
+
+The range test measures from the chest (`y − 11`), and the direction was measured
+from there too — to a point in the middle of the enemy. Far away that hardly
+matters; up close the difference in **height** outweighs the distance, the
+direction to the enemy points downwards rather than forwards, and the arc misses
+by more than its own width. "Pressed up against it and swinging through it" was
+exactly this. Facing is a direction along the ground, so the angle is now
+measured along the ground, foot to foot; the range still comes from the chest.
+After: 100% from 4 px out, and nothing changed at the far edge.
+
+It was a rule, not a display quirk — so single player had it too, and the whole
+audit suite ran again on top of it: combat, loot, descent, zones, content, saves,
+onboarding, soak. All green.
+
+**What is still missing.** The co-op rules beyond loot: how difficulty scales for
+a party and who gets credit for a quest. And the room does not yet spawn what the
+game spawns while it runs — the ambush packs and the boss are still the client's.
 
 ### A room per biome
 

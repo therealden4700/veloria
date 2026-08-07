@@ -87,6 +87,34 @@ export class Net {
     });
   }
 
+  /**
+   * Взмах: в общий мир уходит намерение, а не результат.
+   *
+   * Клиент говорит «махнул, вот куда смотрю и какой это удар в связке».
+   * Кого задело и на сколько, решает комната — теми же `swingHits` и
+   * `resolveHit`, которыми бьёт одиночная игра. Прислать сюда урон было бы
+   * ровно тем, от чего мы уходили: сервер обязан быть источником правды.
+   */
+  sendSwing(combo, facing) {
+    if (!this.online || !this.ws) return;
+    try { this.ws.send(JSON.stringify({ t: 'swing', combo, f: +facing.toFixed(2) })); this.stats.sent++; } catch { /* оборвалось — переживём */ }
+  }
+
+  /** Переезд в другую комнату тем же соединением. */
+  travel(at) {
+    if (!this.online || !this.ws) return;
+    this.snaps.length = 0;
+    this.history.length = 0;
+    try { this.ws.send(JSON.stringify({ t: 'travel', at })); } catch { /* см. выше */ }
+  }
+
+  /** События последнего снимка: попадания, промахи, смерти. */
+  takeEvents() {
+    const e = this._events || [];
+    this._events = [];
+    return e;
+  }
+
   disconnect() {
     if (this.ws) { try { this.ws.close(); } catch { /* уже закрыт */ } }
     this.ws = null;
@@ -97,6 +125,7 @@ export class Net {
   }
 
   _onSnap(m) {
+    if (m.ev && m.ev.length) (this._events ||= []).push(...m.ev);
     this.snaps.push(m);
     if (this.snaps.length > SNAP_KEEP) this.snaps.shift();
     this._fresh = true;          // сверяться есть с чем

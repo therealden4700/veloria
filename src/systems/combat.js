@@ -43,7 +43,12 @@ export function swingHits(attacker, enemies, opts = {}) {
     if (!e || e.dead) continue;
     const ex = e.x, ey = e.y - e.r * 0.6;
     if (dist(ox, oy, ex, ey) > range + e.r) continue;
-    if (Math.abs(angDiff(attacker.facing, angle(ox, oy, ex, ey))) > spread) continue;
+    // Угол — по земле, от ног к ногам. Дальность мерим от груди (`oy`), а вот
+    // направление оттуда же мерить нельзя: вблизи разница высот перевешивает
+    // расстояние, и направление на врага уходит вниз, а не вперёд. Замер по
+    // настоящим правилам: враг в четырёх пикселях, герой смотрит прямо на него
+    // — попадало 26 раз из ста. «Прижался вплотную и машешь мимо» — это оно.
+    if (Math.abs(angDiff(attacker.facing, angle(attacker.x, attacker.y, e.x, e.y))) > spread) continue;
 
     const focused = !!(attacker.hasUnique && attacker.hasUnique('focusEye'))
       && (attacker._focusCd || 0) <= time;

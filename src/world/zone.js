@@ -215,6 +215,28 @@ function shufflePoi(arr, rng) {
   return a;
 }
 
+/**
+ * Сид зоны — одно правило на клиент и на сервер.
+ *
+ * Раньше их было два: клиент считал `(worldSeed ^ id.length*7919) + code*131`,
+ * комната — `seed ^ 0x2a1d`. Пока играли порознь, это никому не мешало; в
+ * общем мире зоны получились **разные**, и первый же замер это поймал — 43
+ * врага у клиента против 39 в снимке. А снимок ссылается на индекс в списке:
+ * при разных списках игрок видел бы одного врага, а бил другого.
+ *
+ * Формула здесь ровно одна, и обе стороны зовут её.
+ */
+export function zoneSeedFor(worldSeed, kind, id) {
+  const w = worldSeed >>> 0;
+  if (kind === 'city') return (w ^ 0x51ed) >>> 0;
+  // Этаж сюда не подмешиваем: его подмешивает сам `generateDungeon`, и второй
+  // раз — это лишний способ разойтись.
+  if (kind === 'dungeon') return (w ^ 0x9e37) >>> 0;
+  let h = 0;
+  for (let i = 0; i < String(id || '').length; i++) h = (h * 131 + String(id).charCodeAt(i)) >>> 0;
+  return (w ^ 0x2a1d ^ h) >>> 0;
+}
+
 export function generateBiomeZone(biomeId, seed, opts = {}) {
   const biome = BIOMES[biomeId];
   const rng = makeRng(seed);

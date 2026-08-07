@@ -29,7 +29,7 @@ import { Player, emptyBoon } from './entities/player.js';
 import { Enemy, Projectile, ENEMIES } from './entities/enemies.js';
 
 import { generateCity, NPC_DEFS } from './world/city.js';
-import { generateBiomeZone } from './world/zone.js';
+import { generateBiomeZone, zoneSeedFor } from './world/zone.js';
 import { buildPacks } from './systems/packs.js';
 import { generateDungeon, isBossFloor } from './world/dungeon.js';
 import { BIOMES, OVERWORLD } from './world/biomes.js';
@@ -209,13 +209,109 @@ export class Game {
     });
     if (!m) return net.error || 'не подключиться';
     if (m.world && m.world.seed !== undefined && m.world.seed !== this.worldSeed) {
-      // город должен быть один и тот же у всех
+      // Мир должен быть один и тот же у всех. Сид комнаты старше нашего:
+      // зоны строятся общим правилом от него, и построенные своим надо
+      // выбросить целиком, а не только город — иначе первый же биом окажется
+      // чужим, и снимок будет ссылаться в другой список врагов.
       this.worldSeed = m.world.seed;
-      this.zoneCache.delete('city');
-      if (this.zone && this.zone.kind === 'city') this.enterZone(this.getCity());
+      this.zoneCache.clear();
+      if (this.zone) this.enterZone(this.zone.kind === 'city' ? this.getCity() : this.getBiome(this.zone.biomeId));
     }
+    // Комната шлёт `welcome` и при переезде — тем же путём принимаем её сид.
+    net.onWelcome = (msg) => {
+      if (!msg.world || msg.world.seed === undefined || msg.world.seed === this.worldSeed) return;
+      this.worldSeed = msg.world.seed;
+      this.zoneCache.clear();
+    };
     this.hud.toast('Ты в общей Велории', '#c9a6ff');
     return 'online';
+  }
+
+  /**
+   * Считает ли бой комната.
+   *
+   * Только в общем мире и только там, где есть с кем драться. В городе врагов
+   * нет по устройству, и переключать там нечего.
+   */
+  get serverRunsCombat() {
+    return net.online && !!this.zone && this.zone.kind !== 'city';
+  }
+
+  /**
+   * Подтянуть врагов к тому, что видит комната.
+   *
+   * Индекс в снимке — это место врага в общем списке зоны, включая убитых:
+   * сервер шлёт его именно так, потому что после первой же смерти нумерация
+   * «только живых» разъехалась бы с событиями. Положение подтягиваем не
+   * рывком, а притиркой — снимки приходят двадцать раз в секунду, а кадров
+   * шестьдесят, и присвоение в лоб дало бы шаг втрое реже кадра.
+   */
+  /** Враг по номеру из снимка. Карта пересобирается, когда список поменялся. */
+  enemyByNid(nid) {
+    if (!this._byNid || this._byNidLen !== this.enemies.length) {
+      this._byNid = new Map();
+      for (const e of this.enemies) if (e.nid !== undefined) this._byNid.set(e.nid, e);
+      this._byNidLen = this.enemies.length;
+    }
+    return this._byNid.get(nid);
+  }
+
+  applyEnemySnapshot() {
+    const snap = net.snaps[net.snaps.length - 1];
+    if (!snap) return;
+    const живые = new Set();
+    for (const s of snap.enemies || []) {
+      const e = this.enemyByNid(s.i);
+      if (!e) continue;
+      живые.add(s.i);
+      if (e.dead) continue;
+      const k = 0.35;
+      e.x += (s.x - e.x) * k; e.y += (s.y - e.y) * k;
+      e.hp = s.hp; e.maxHp = s.mx;
+      if (!e.aggro && s.hp < s.mx) e.aggro = true;   // по нему уже били
+    }
+    // Кого в снимке нет — тот убит. Ведём через `killEnemy`, а не гасим флаг:
+    // там висят добыча, опыт и задания, и обойти их значило бы получить мир,
+    // где враги умирают, но ничего не происходит.
+    this.playServerEvents();   // сначала события: там сказано, кто чей убийца
+    for (const e of this.enemies) {
+      if (!e || e.dead || живые.has(e.nid)) continue;
+      const by = this._убийцы && this._убийцы.get(e.nid);
+      this.killEnemy(e, { чужой: by !== undefined && by !== net.pid });
+      if (this._убийцы) this._убийцы.delete(e.nid);
+    }
+  }
+
+  /**
+   * Зрелище по событиям комнаты.
+   *
+   * Правило посчитал сервер — искры, числа и звук остаются клиенту. Это то же
+   * разделение, что и во всей игре: без него пришлось бы либо гонять урон по
+   * проводу вместе с картинкой, либо считать его дважды.
+   */
+  playServerEvents() {
+    for (const ev of net.takeEvents()) {
+      // Событие `kill` приходит раньше снимка, где враг уже исчез. Запоминаем
+      // убийцу — снимок сам по себе не знает, чья это была добыча.
+      if (ev.t === 'kill') { (this._убийцы || (this._убийцы = new Map())).set(ev.i, ev.by); continue; }
+      const e = ev.i !== undefined ? this.enemyByNid(ev.i) : null;
+      if (ev.t === 'hit' && e) {
+        e.hurtT = 0.16;
+        this.floats.add(e.x + (Math.random() - 0.5) * 8, e.y - e.spr.h * 0.7, String(ev.d), {
+          color: ev.c ? '#ffd54a' : '#ffffff', size: ev.c ? 13 : 10, crit: ev.c, bold: ev.c,
+        });
+        this.particles.burst(e.x, e.y - e.r * 0.7, ev.c ? 12 : 7, {
+          color: '#ff5a5a', color2: '#ffd0a0', speed: 70, life: 0.35, size: 2, g: 200, vz: 55,
+        });
+        audio.play(ev.c ? 'crit' : 'hit', 0.8);
+      } else if (ev.t === 'dodge' && e) {
+        this.floats.add(e.x, e.y - e.spr.h * 0.7, 'мимо', { color: '#c99cff', size: 9 });
+      } else if (ev.t === 'swing' && ev.pid !== net.pid) {
+        // чужой взмах: своя отдача уже отыграна при нажатии
+        const o = (this._others || []).find((x) => x.pid === ev.pid);
+        if (o) this.slashes.push({ x: o.x, y: o.y - 12, a: ev.f, t: 0, dur: 0.18, combo: ev.combo });
+      }
+    }
   }
 
   goOffline() {
@@ -387,7 +483,7 @@ export class Game {
 
   getCity() {
     let z = this.zoneCache.get('city');
-    if (!z) { z = generateCity(this.worldSeed ^ 0x51ed); this.zoneCache.set('city', z); }
+    if (!z) { z = generateCity(zoneSeedFor(this.worldSeed, 'city')); this.zoneCache.set('city', z); }
     return z;
   }
 
@@ -395,7 +491,7 @@ export class Game {
     const key = 'biome:' + id;
     let z = this.zoneCache.get(key);
     if (!z) {
-      z = generateBiomeZone(id, (this.worldSeed ^ (id.length * 7919)) + id.charCodeAt(0) * 131);
+      z = generateBiomeZone(id, zoneSeedFor(this.worldSeed, 'biome', id));
       this.zoneCache.set(key, z);
     }
     return z;
@@ -406,7 +502,7 @@ export class Game {
     const key = 'dun:' + floor + ':' + modKey;
     let z = this.zoneCache.get(key);
     if (!z) {
-      z = generateDungeon(floor, this.worldSeed ^ 0x9e37, modKey);
+      z = generateDungeon(floor, zoneSeedFor(this.worldSeed, 'dungeon'), modKey);
       for (const k of [...this.zoneCache.keys()]) if (k.startsWith('dun:') && k !== key) this.zoneCache.delete(k);
       this.zoneCache.set(key, z);
     }
@@ -431,6 +527,10 @@ export class Game {
   }
 
   doTravel(dest) {
+    // В общем мире переход по вратам — это ещё и переезд между комнатами:
+    // иначе герой ушёл бы в лес у себя, а для комнаты остался бы в городе.
+    if (net.online) net.travel(dest);
+
     let z, spawnAt = null;
     if (dest.kind === 'city') {
       z = this.getCity();
@@ -508,6 +608,13 @@ export class Game {
       }
       this.enemies.push(e);
     }
+    // Стабильный номер врага — тот, под которым он родился. Комната шлёт в
+    // снимке именно его: её список не редеет, а наш вычищает трупы, и после
+    // первой же смерти позиции разъезжаются. Раз номер стоит в сообщении,
+    // пусть он и живёт на враге, а не выводится из длины массива.
+    this.enemies.forEach((e, i) => { e.nid = i; });
+    this._nextNid = this.enemies.length;
+    this._byNid = null;
     if (zone.boss) zone.boss.spawned = false;
 
     const sp = spawnAt || zone.spawnPoint;
@@ -588,6 +695,17 @@ export class Game {
       });
     }
     audio.play('swing', combo === 2 ? 1 : 0.75);
+
+    // ── в общем мире попадания считает комната
+    //
+    // Клиент шлёт намерение и на этом останавливается. Посчитать здесь ещё раз
+    // значило бы получить два ответа на один вопрос: свой урон на экране и
+    // серверный в снимке, — а расходиться они начнут на первом же промахе по
+    // сдвинувшейся цели. Зрелище придёт событиями `ev`, там же и числа.
+    //
+    // Замах, свист и искры остаются: они уже отыграны выше и не ждут ответа —
+    // ждать круга до сервера, чтобы махнуть мечом, нельзя.
+    if (this.serverRunsCombat) { net.sendSwing(combo, p.facing || 0); return; }
 
     // Кого задело и на сколько — считает общий модуль `systems/combat.js`: тем
     // же кодом это должна уметь и комната на сервере. Здесь остаётся то, чего
@@ -695,11 +813,24 @@ export class Game {
     if (e.hp <= 0) this.killEnemy(e);
   }
 
-  killEnemy(e) {
+  /**
+   * @param {object} e
+   * @param {{чужой?: boolean}} [opts] — убил другой игрок: тело падает, но
+   *   добыча, опыт, счётчики заданий и пассивки на убийство остаются у него.
+   *   Без этого в общем мире каждый получал бы награду за всех.
+   */
+  killEnemy(e, opts = {}) {
     e.dead = true;
     e.deadT = 0;
     e.hp = 0;
     const p = this.player;
+    if (opts.чужой) {
+      audio.play('die', e.boss ? 0.6 : 0.35);
+      this.particles.burst(e.x, e.y - e.r * 0.6, e.boss ? 40 : 12, {
+        color: e.spr.c1 || '#c05a5a', color2: '#ffd0a0', speed: 90, life: 0.5, size: 2, g: 190, vz: 60,
+      });
+      return;
+    }
     p.kills++;
     if (e.boss) p.stats.bossKills++;
 
@@ -825,6 +956,7 @@ export class Game {
       const y = clamp(boss.y + Math.sin(a) * r, 20, this.zone.pxH - 20);
       const e = new Enemy(key, Math.max(1, boss.level - 2), x, y);
       e.aggro = true;
+      e.nid = this._nextNid++;
       this.enemies.push(e);
       this.particles.burst(x, y - 8, 16, { color: '#9a5fe0', color2: '#e0b8ff', speed: 70, life: 0.5, size: 2, glow: 8 });
     }
@@ -992,6 +1124,7 @@ export class Game {
         for (const s of buildPacks([{ x: ev.x, y: ev.y }, { x: ev.x + 40, y: ev.y + 26 }], table, ev.level, rng)) {
           const e = new Enemy(s.key, s.level, s.x, s.y);
           e.pack = 'ambush'; e.aggro = true;
+          e.nid = this._nextNid++;
           this.enemies.push(e);
           ev.enemies.push(e);
           this.particles.burst(e.x, e.y - 8, 12, { color: '#ffb06a', speed: 60, life: 0.5, size: 2, glow: 6 });
@@ -1528,7 +1661,7 @@ export class Game {
       // Своего героя двигает по-прежнему клиент — иначе каждое нажатие ждало бы
       // круга до сервера. Сюда уходит намерение, а `reconcile` подтягивает
       // героя к тому, где его видит комната, переигрывая неучтённые шаги.
-      if (net.online && this.zone && this.zone.kind === 'city') {
+      if (net.online && this.zone) {
         const ax = input.axis();
         net.sendInput(dt, ax.x, ax.y, p.facing || 0);
         net.reconcile(this.zone, p, p.moveSpeed);
@@ -1537,7 +1670,17 @@ export class Game {
         this._others = [];
       }
 
-      for (const e of this.enemies) e.update(dt, this);
+      // ── враги: свои или комнатные
+      //
+      // В общем мире врагов считает комната, и клиенту незачем водить их ИИ
+      // второй раз — иначе на экране будет один враг, а бить придётся другого.
+      // Зато сами `Enemy` остаются: зона у клиента построена тем же
+      // генератором и тем же сидом, порядок в списке совпадает, и снимок
+      // ссылается ровно на этот индекс. Поэтому мы не выдумываем новые
+      // сущности, а подтягиваем положение и здоровье к тому, что видит сервер:
+      // спрайты, сортировка по глубине и вся отрисовка работают как прежде.
+      if (this.serverRunsCombat) this.applyEnemySnapshot();
+      else for (const e of this.enemies) e.update(dt, this);
       for (let i = this.enemies.length - 1; i >= 0; i--) {
         const e = this.enemies[i];
         if (e.dead && e.deadT > 1.2) this.enemies.splice(i, 1);
@@ -1792,6 +1935,7 @@ export class Game {
     z.boss.spawned = true;
     const e = new Enemy(z.boss.key, z.boss.level, z.boss.x, z.boss.y);
     e.aggro = true;
+    e.nid = this._nextNid++;
     this.enemies.push(e);
     this.hud.showBanner(t(e.name).toUpperCase(), 'ур. ' + e.level + ' · берегись', '#ff7a6a');
     audio.play('boss');

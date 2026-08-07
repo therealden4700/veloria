@@ -15,7 +15,7 @@ installHeadless();
 
 const { initProps } = await import('../src/art/props.js');
 const { bakeAllMonsters } = await import('../src/art/sprites.js');
-const { generateBiomeZone } = await import('../src/world/zone.js');
+const { generateBiomeZone, zoneSeedFor } = await import('../src/world/zone.js');
 const { generateCity } = await import('../src/world/city.js');
 const { generateDungeon } = await import('../src/world/dungeon.js');
 const { Enemy } = await import('../src/entities/enemies.js');
@@ -57,9 +57,11 @@ export class World {
     this.floor = opts.floor || 1;
     this.seed = opts.seed >>> 0 || 1;
 
-    this.zone = this.kind === 'city' ? generateCity(this.seed ^ 0x51ed)
-      : this.kind === 'dungeon' ? generateDungeon(this.floor, this.seed ^ (this.floor * 977))
-      : generateBiomeZone(this.biomeId, this.seed ^ 0x2a1d);
+    // Сид считает общее правило `zoneSeedFor`: две формулы уже однажды дали две
+    // разные зоны на одну комнату, и снимок начал ссылаться в пустоту.
+    this.zone = this.kind === 'city' ? generateCity(zoneSeedFor(this.seed, 'city'))
+      : this.kind === 'dungeon' ? generateDungeon(this.floor, zoneSeedFor(this.seed, 'dungeon'))
+      : generateBiomeZone(this.biomeId, zoneSeedFor(this.seed, 'biome', this.biomeId));
 
     this.time = 0;
     this.players = new Map();      // pid → сущность
