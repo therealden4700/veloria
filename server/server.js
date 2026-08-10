@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { attachWebSocket } from './ws.js';
 import { World } from './world.js';
 import { Market } from './market.js';
+import { QuestBook } from './quests.js';
 // Списки мест и модификаторов берём из самих правил: перечислять их здесь
 // значило бы завести вторую копию, которая однажды разойдётся.
 import { BIOMES } from '../src/world/biomes.js';
@@ -69,6 +70,11 @@ class Room {
     this.world = new World(worldOpts || { kind: 'city', seed: 20260805 });
     // Лавки и кузня общего мира: их считает комната, а не клиент.
     this.market = new Market(20260805);
+    // Журналы заданий: по одному на игрока, ведёт их комната.
+    this.quests = new QuestBook(this.world);
+    // Мир должен уметь отметить ход задания там же, где случилось событие:
+    // в убийстве и в реакции. Даём ему ссылку, а не копию логики.
+    this.world.book = this.quests;
     this.players = new Map();     // conn.id → игрок
     this.tick = 0;
     this.lastStep = Date.now();
@@ -116,6 +122,12 @@ class Room {
       t: 'welcome', pid: p.pid, room: this.id, tickHz: TICK_HZ, now: Date.now(),
       world: this.world.describe(),
     });
+    // Журнал берём из того же сохранения, что и героя. У гостя его переносит
+    // соединение — вместе с самим героем.
+    // Журнал заводим на НАСТОЯЩЕГО героя, а не на запись соединения: у той нет
+    // ни уровня, ни характеристик, а `refresh` смотрит и туда, и туда. Ошибка
+    // при этом глохла: `welcome` уже ушёл, и клиент считал, что он в игре.
+    this.quests.для(p.ent, (character && character.quests) || null);
     p.bagDirty = true;              // при входе клиент должен увидеть свой рюкзак
     this.broadcast({ t: 'join', player: shortOf(p) }, p);
     return p;
@@ -127,8 +139,10 @@ class Room {
     this.записать(p);                 // уходит — сохраняем то, что насчитала комната
     // И отдаём соединению слепок: по нему гость восстановится в следующей
     // комнате. Для учётки это лишнее — её ведёт база, — но и не мешает.
-    if (p.ent && p.ent.toJSON) { try { p.наПамять = { player: p.ent.toJSON() }; } catch { /* не беда */ } }
+    if (p.ent && p.ent.toJSON) { try { p.наПамять = { player: p.ent.toJSON(), quests: this.quests.слепок(p.ent) }; } catch { /* не беда */ } }
     this.players.delete(connId);
+    if (p.ent) this.quests.забыть(p.ent.pid);
+    if (p.ent) this.market.забыть(p.ent.pid);
     this.world.removePlayer(p.pid);
     this.stats.left++;
     this.broadcast({ t: 'leave', pid: p.pid });
@@ -141,6 +155,23 @@ class Room {
    * причиной отказа — иначе он не сможет сказать игроку, чего не хватило, — и
    * свежий рюкзак, если что-то поменялось.
    */
+  /**
+   * Взять или сдать задание.
+   *
+   * Клиент называет только номер: можно ли взять и выполнено ли — решает
+   * комната. Замер до этого: клиент выдавал награду сам, и сверка с миром
+   * стирала её через три кадра — 120 золота обратно в 40.
+   */
+  заданиe(p, msg) {
+    const e = p.ent;
+    if (!e) return;
+    const r = msg.do === 'accept' ? this.quests.взять(e, msg.id)
+      : msg.do === 'complete' ? this.quests.сдать(e, msg.id)
+      : { ok: false, why: 'непонятно, что делать' };
+    if (r.ok) { this.world.dirty = true; p.bagDirty = true; this.quests.обновить(e); }
+    this.sendTo(p, { t: 'задание', act: msg.do, ...r });
+  }
+
   торг(p, msg) {
     const e = p.ent;
     if (!e) return;
@@ -158,7 +189,10 @@ class Room {
         return;
       case 'buy':     r = m.buy(e, String(msg.npc || 'smith'), msg.slot); break;
       case 'sell':    r = m.sell(e, msg.id); break;
-      case 'craft':   r = m.craft(e, String(msg.cat || ''), msg.sub || null, msg.idx); break;
+      case 'craft':
+        r = m.craft(e, String(msg.cat || ''), msg.sub || null, msg.idx);
+        if (r.ok) this.quests.событие(e, 'onCraft');
+        break;
       case 'salvage': r = m.salvage(e, msg.id); break;
       case 'reforge': r = m.reforge(e, msg.id); break;
       case 'sharpen': r = m.sharpen(e, msg.fuel); break;
@@ -180,7 +214,7 @@ class Room {
   записать(p) {
     if (!p || !p.address || !p.ent || !p.ent.toJSON) return;
     try {
-      const data = { player: p.ent.toJSON(), quests: p.quests || null, ver: 1 };
+      const data = { player: p.ent.toJSON(), quests: this.quests.слепок(p.ent), ver: 1 };
       saveWorldCharacter(p.address, data, p.name);
     } catch (e) {
       console.error('не записался персонаж', p.address, '—', e.message);
@@ -242,6 +276,12 @@ class Room {
           t: 'me', gold: Math.round(e.gold || 0), xp: Math.round(e.xp || 0),
           lvl: e.level, pts: e.statPoints || 0, bag: (e.inventory || []).length,
         });
+        // Журнал — когда изменился: ход задания идёт от событий комнаты, и
+        // видеть его игрок должен таким, каким его ведёт мир.
+        this.quests.сверитьСбор(e);
+        const ж = this.quests.свежий(e);
+        if (ж) this.sendTo(p, { t: 'журнал', quests: ж });
+
         // Рюкзак — не каждый такт: он тяжёлый. Шлём, когда что-то изменилось,
         // и это единственная правда о вещах в общем мире: клиент их не считает.
         if (p.bagDirty || this.world.bagChanged) {
@@ -535,6 +575,13 @@ attachWebSocket(http, (conn) => {
     }
     мояКомната = цель;
     player = вошёл;
+    // Дошёл — засчитываем: «добраться до Пролома» и «спуститься на этаж» тоже
+    // задания, и отмечает их тот, кто знает, куда игрок на самом деле попал.
+    if (player && player.ent) {
+      const w = цель.world;
+      if (w.kind === 'biome') цель.quests.событие(player.ent, 'onEnterBiome', w.biomeId);
+      if (w.kind === 'dungeon') цель.quests.событие(player.ent, 'onDepth', w.floor);
+    }
     sweepRooms();
   };
 
@@ -554,6 +601,7 @@ attachWebSocket(http, (conn) => {
     if (msg.t === 'pickup') { мояКомната.world.pickup(player.pid, msg.lid); return; }
     // Торговля и кузня. Клиент присылает намерение, комната отвечает «да» или
     // «нет» с причиной — и, если да, сама меняет золото и рюкзак.
+    if (msg.t === 'quest') { мояКомната.заданиe(player, msg); return; }
     if (msg.t === 'shop' || msg.t === 'buy' || msg.t === 'sell' || msg.t === 'craft'
         || msg.t === 'salvage' || msg.t === 'reforge' || msg.t === 'sharpen' || msg.t === 'fuse') {
       мояКомната.торг(player, msg);

@@ -1822,9 +1822,49 @@ failed to find anything to kill in one run out of several. A permanently
 sometimes-red check is worse than none, so the refusals stay on the wire and
 "bought, forged, sharpened" is measured against the room's rules directly.
 
-**What is still missing.** Quests are still the client's: their progress and
-rewards do not go through the room. The single-player game is deliberately
-untouched — it must work with no network at all.
+### Quests are kept by the world
+
+The last thing the client still decided for itself. Measured before touching
+anything: complete a quest online and the client duly hands over the reward — 60
+gold becomes 120, experience goes from nothing to seventy — and three frames
+later the sync with the world puts it back to 40 and zero. The quest is marked
+done and nothing was earned. It could not have been otherwise once the room
+started counting.
+
+There is no second journal. It is the same `Quests` class the single-player game
+runs on: it knows nothing about a screen and only needs something to call
+`toast` on. The room adds what it adds everywhere — checking. The client says
+"take" and "hand in"; whether it can is the server's answer.
+
+Progress comes from real events: a kill the room resolved, a craft it approved, a
+reaction it fired, a biome it actually put you in. The client's own hooks are
+switched off online — counting the same kill twice means arguing with the room
+between its messages, and showing a number that is about to change.
+
+**And the third instance of the same hole.** The journal calls `game.onLevelUp`
+when a reward levels you up, and `game.onQuestComplete` when it is handed in.
+Neither existed on the room. I had written a tidy little stub with the two
+methods I thought it needed — exactly the mistake `room-surface-check` exists to
+catch, and it missed this one because its file list did not include the quest
+system. Two fixes: the stand reads that file now, and the stub is gone. The
+journal is handed the **real room** with only `player` and `toast` swapped out,
+so `onLevelUp`, `proc` and `spawnLoot` come from the room and cannot drift from
+it.
+
+[`tools/quests-server-check.js`](tools/quests-server-check.js) walks it from the
+outside: the journal arrives from the world, a made-up quest cannot be taken, an
+untaken one cannot be handed in, an unfinished one cannot either — then it hunts
+the species the quest actually names (hunting whatever was nearest left progress
+at zero, which was about the stand, not the game) and checks the count moved.
+Finally it disconnects and comes back to confirm the world still remembers.
+
+One mutation of two was caught. Removing the "not finished yet" guard did **not**
+turn the stand red — and that is correct: `complete` asks the same question
+itself, so the rule is enforced twice and the mutation opened no hole.
+
+**What is still missing.** Nothing of progress: combat, loot, gold, experience,
+items, shops, the forge and quests are all the world's now. The single-player
+game is deliberately untouched — it must work with no network at all.
 
 ### The client hands combat over
 

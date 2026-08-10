@@ -198,6 +198,12 @@ export class World {
     if (p) {
       p.kills = (p.kills || 0) + 1;
       if (e.boss && p.stats) p.stats.bossKills++;
+      // Ход задания — от настоящего убийства, а не от слова клиента. Крючки те
+      // же, что зовёт одиночная игра; журнал ведёт комната.
+      if (this.book) {
+        if (e.elite && !e.boss) this.book.событие(p, 'onEliteKill');
+        this.book.событие(p, 'onKill', e.key);
+      }
       // Опыт начисляет сервер: до сих пор его считал клиент и присылал слепком.
       // Уровень — это доступ к биомам и множитель на всё, и верить в нём на
       // слово нельзя.
@@ -408,6 +414,23 @@ export class World {
   }
 
   /**
+   * Положить вещь на землю.
+   *
+   * Нужен наградам, которым не хватило места в рюкзаке: в одиночной игре они
+   * падают под ноги, и в общем мире должно быть так же — иначе сюжетная вещь
+   * пропадёт навсегда.
+   */
+  spawnLoot(x, y, data) {
+    const a = Math.random() * Math.PI * 2;
+    this.loot.push({
+      lid: this.nextLid++, x: x + Math.cos(a) * 8, y: y + Math.sin(a) * 8,
+      gold: data.gold || 0, item: data.item || null,
+      owner: (this.player && this.player.pid) ?? null,
+      ничей: this.time + LOOT_MINE, until: this.time + LOOT_LIFE,
+    });
+  }
+
+  /**
    * Поднять лежащее. Проверяем всё, о чём клиент мог соврать: что вещь есть,
    * что она рядом и что она его.
    */
@@ -470,8 +493,25 @@ export class World {
   onReaction(e, key) {
     const p = this.player;
     if (p && p.stats) p.stats.reactions = (p.stats.reactions || 0) + 1;
+    if (p && this.book) this.book.событие(p, 'onReaction', key);
     this.events.push({ t: 'react', i: this.enemies.indexOf(e), k: key, pid: p ? p.pid : null });
   }
+
+  /**
+   * Задание сдано.
+   *
+   * Зрелище — баннер и звук — играет клиент по ответу комнаты. Здесь метод
+   * нужен затем же, зачем `proc` и `onLevelUp`: журнал зовёт его на сдаче, и
+   * без него падал бы весь путь. Третий раз одна и та же дыра.
+   */
+  onQuestComplete() {}
+
+  /**
+   * Строка игроку. На сервере смотреть некому, но метод обязан быть: журнал
+   * зовёт его на каждом шаге задания. Тому, кто ведёт журнал, `toast` подменяют
+   * на сбор строк — а этот остаётся для всех остальных случаев.
+   */
+  toast() {}
 
   /** Поднять павших: мир общий, лежать в нём некому и незачем. */
   raiseDead() {

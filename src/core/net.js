@@ -80,6 +80,11 @@ export class Net {
           this.clockOffset = m.now - Date.now();
           if (this.onWelcome) this.onWelcome(m);
           done(m);
+        } else if (m.t === 'журнал') {
+          this.quests = m;
+          if (this.onQuests) this.onQuests(m);
+        } else if (m.t === 'задание') {
+          if (this.onQuest) this.onQuest(m);
         } else if (m.t === 'bag') {
           this.bag = m;
           if (this.onBag) this.onBag(m);

@@ -221,6 +221,8 @@ export class Game {
     }
     // Комната шлёт `welcome` и при переезде — тем же путём принимаем её сид.
     net.onBag = (m) => this.applyBag(m);
+    net.onQuests = (m) => this.applyQuests(m);
+    net.onQuest = (m) => this.дошлоЗадание(m);
     net.onDeal = (m) => this.дошлаСделка(m);
     net.onShop = (m) => { if (this.menus.shop && this.menus.shop.npcId === m.npc) this.menus.shop.stock = (m.stock || []).map(reviveItem).filter(Boolean); };
     net.onWelcome = (msg) => {
@@ -647,7 +649,7 @@ export class Game {
       z = this.getCity();
     } else if (dest.kind === 'biome') {
       z = this.getBiome(dest.id);
-      this.quests.onEnterBiome(dest.id, this);
+      if (!net.online) this.quests.onEnterBiome(dest.id, this);
     } else if (dest.kind === 'dungeon') {
       z = this.getDungeon(dest.floor, dest.mod || 'none');
       if (dest.floor > this.player.deepest) {
@@ -658,7 +660,7 @@ export class Game {
       if (recordDepth(dest.floor) && dest.floor >= ABYSS_START) {
         this.toast('Бездна пройдена глубже: ' + dest.floor, '#ff9ae0', 4);
       }
-      this.quests.onDepth(dest.floor, this);
+      if (!net.online) this.quests.onDepth(dest.floor, this);
     }
     this.enterZone(z, spawnAt);
     this.save();
@@ -754,8 +756,10 @@ export class Game {
     } else {
       this.hud.showBanner('ВЕЛОРИЯ', 'безопасная зона');
     }
-    if (zone.safe) this.quests.refresh(this.player);
-    this.quests.syncCollect(this.player);
+    if (!net.online) {
+      if (zone.safe) this.quests.refresh(this.player);
+      this.quests.syncCollect(this.player);
+    }
   }
 
   // ════════════════════════════ физика и запросы
@@ -953,7 +957,10 @@ export class Game {
     const flow = p.passive('arcaneFlow');
     if (flow) p.restoreMp(flow);
 
-    if (e.elite && !e.boss) this.quests.onEliteKill(this);
+    // Ход задания в общем мире считает комната: она видит настоящее
+    // убийство. Считать его ещё и здесь значит спорить с ней между её
+    // сообщениями — и показывать игроку число, которое сейчас поменяется.
+    if (!net.online && e.elite && !e.boss) this.quests.onEliteKill(this);
     this.proc('kill', { enemy: e });
     audio.play('die', e.boss ? 1 : 0.6);
     this.shake.add(e.boss ? 9 : e.elite ? 4 : 2, e.boss ? 0.6 : 0.2);
@@ -966,7 +973,7 @@ export class Game {
     p.gainXp(e.xpValue, this);
     this.floats.add(e.x, e.y - e.spr.h - 4, `+${e.xpValue} опыта`, { color: '#8ff0b0', size: 8, vy: -18 });
     this.dropLoot(e);
-    this.quests.onKill(e.key, this);
+    if (!net.online) this.quests.onKill(e.key, this);
 
     if (e.boss) {
       this.hud.showBanner('ПОВЕРЖЕН', e.name, '#ffd06a');
@@ -1124,7 +1131,7 @@ export class Game {
     audio.play({ conduction: 'bolt', shatter: 'crit', corrosion: 'acid', corrode: 'acid', steam: 'steam' }[key] || 'cast', 0.9);
     if (!моя) return;
     this.player.stats.reactions = (this.player.stats.reactions || 0) + 1;
-    this.quests.onReaction(key, this);
+    if (!net.online) this.quests.onReaction(key, this);
   }
 
   /** Снаряд от героя в заданном направлении. */
@@ -1474,6 +1481,38 @@ export class Game {
   }
 
   /**
+   * Взять задание. В общем мире решает комната: она же ведёт ход и выдаёт
+   * награду. Клиент раньше выдавал её сам, и сверка с миром стирала её через
+   * три кадра — 120 золота обратно в 40.
+   */
+  acceptQuest(q) {
+    if (net.online) { net.торг({ t: 'quest', do: 'accept', id: q.id }); return; }
+    this.quests.accept(q, this);
+  }
+
+  /** Сдать задание — там же, где его вели. */
+  completeQuest(q) {
+    if (net.online) { net.торг({ t: 'quest', do: 'complete', id: q.id }); return; }
+    this.quests.complete(q, this);
+  }
+
+  /** Журнал, каким его ведёт мир. Свой ход клиент в общем мире не считает. */
+  applyQuests(m) {
+    if (!net.online || !m || !m.quests) return;
+    this.quests.fromJSON(m.quests);
+  }
+
+  /** Ответ мира на «взять» или «сдать». */
+  дошлоЗадание(m) {
+    if (!m.ok) { audio.play('deny'); this.toast(m.why || 'не вышло', UI.danger, 2.5); return; }
+    if (m.act === 'accept') { audio.play('quest'); this.toast('Задание принято: ' + t(m.name), '#f0c05a'); return; }
+    audio.play('level');
+    this.hud.showBanner('ЗАДАНИЕ ВЫПОЛНЕНО', t(m.name), '#f0c05a');
+    if (m.gold || m.xp) this.toast(`+${m.xp || 0} опыта, +${m.gold || 0} золота`, UI.gold, 3);
+    for (const в of m.вести || []) if (в.startsWith('на земле')) this.toast(в, UI.danger, 3);
+  }
+
+  /**
    * Ответ мира на намерение из лавки или кузни.
    *
    * Само действие уже случилось (или не случилось) на сервере — здесь только
@@ -1492,7 +1531,7 @@ export class Game {
         audio.play('forge');
         this.hud.showBanner('ВЫКОВАНО', t(m.name), цвет);
         this.particles.burst(p.x, p.y - 12, 20, { color: '#ffd66a', color2: '#fff6c8', speed: 60, life: 0.6, size: 2, glow: 7 });
-        this.quests.onCraft(this);
+        // Ход задания «выковать» комната отметила у себя и пришлёт журналом.
         break;
       case 'reforge': audio.play('forge'); this.hud.showBanner('ПЕРЕПЛАВЛЕНО', t(m.name), цвет); break;
       case 'fuse': audio.play('fuse'); this.hud.showBanner('СЛИЯНИЕ', t(m.name), цвет); break;

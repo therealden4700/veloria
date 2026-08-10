@@ -34,6 +34,10 @@ const ФАЙЛЫ = [
   'src/entities/player.js',
   'src/entities/enemies.js',
   'src/systems/reactions.js',
+  // Журнал заданий тоже ведёт комната — значит и его обращения к «игре»
+  // должны быть у неё. Без этой строки стенд пропустил `onQuestComplete`, и
+  // сдача задания падала: третий раз та же дыра.
+  'src/systems/quests.js',
 ];
 const просят = new Map();          // метод → где просят
 for (const f of ФАЙЛЫ) {

@@ -855,10 +855,10 @@ export class Menus {
     const by = py + ph - 26;
     if (qq.state === 'available') {
       button(g, dx, by, 110, 18, 'Принять', { hot: hit(this.mx, this.my, dx, by, 110, 18) });
-      this.add(dx, by, 110, 18, () => q.accept(qq, this.game));
+      this.add(dx, by, 110, 18, () => this.game.acceptQuest(qq));
     } else if (qq.state === 'active' && q.canComplete(qq, p)) {
       button(g, dx, by, 110, 18, 'Сдать задание', { hot: hit(this.mx, this.my, dx, by, 110, 18) });
-      this.add(dx, by, 110, 18, () => q.complete(qq, this.game));
+      this.add(dx, by, 110, 18, () => this.game.completeQuest(qq));
     } else if (qq.state === 'active') {
       text(g, 'Задание в работе', dx, by + 5, { size: 9, color: UI.textDim });
     }
