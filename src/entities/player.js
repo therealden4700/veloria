@@ -10,6 +10,12 @@ import { corruptionEffects } from '../systems/abyss.js';
 
 const NO_CORRUPTION = corruptionEffects(0);
 
+// Потолок уровня — рядом с тем, кто им пользуется, чтобы не разъехалось.
+const MAX_LEVEL = 60;
+// Больше, чем даёт честная игра, характеристика быть не может: пять начальных
+// плюс три очка за уровень. Двадцать сверху — запас на подарки и снаряжение.
+const СТАТ_ПОТОЛОК = (level) => 5 + (level - 1) * 3 + 20;
+
 export const GEAR_SLOTS = ['weapon', 'armor', 'helm', 'ring', 'amulet'];
 export const RUNE_SLOTS = ['skill1', 'skill2', 'skill3', 'passive'];
 export const SLOTS = [...GEAR_SLOTS, ...RUNE_SLOTS];
@@ -331,7 +337,7 @@ export class Player {
     const mod = game.zone && game.zone.mod;
     this.xp += Math.round(n * this.boon.xpMul * ((mod && mod.xpMul) || 1));
     let ups = 0;
-    while (this.xp >= this.xpNext && this.level < 60) {
+    while (this.xp >= this.xpNext && this.level < MAX_LEVEL) {
       this.xp -= this.xpNext;
       this.level++;
       this.statPoints += 3;
@@ -347,7 +353,9 @@ export class Player {
   }
 
   spendStat(k) {
-    if (this.statPoints <= 0) return false;
+    // `> 0`, а не `<= 0`: на `undefined` второе ложно, и очки тратились без
+    // конца, каждый раз делая statPoints нечислом и всё равно поднимая стат.
+    if (!(this.statPoints > 0)) return false;
     if (!['str', 'vit', 'agi', 'int'].includes(k)) return false;
     this[k]++;
     this.statPoints--;
@@ -625,18 +633,52 @@ export class Player {
     };
   }
 
+  /**
+   * Собрать героя из сохранения.
+   *
+   * Здесь было голое `Object.assign` — и это оказалось самым широким местом в
+   * игре. Числа отсюда идут прямо в геттеры `maxHp`, `attack`, `moveSpeed`, а
+   * в общем мире по ним считает бой сервер, получая слепок от клиента.
+   *
+   * Одна причина, три последствия, все проверены запуском. Строка вместо
+   * числа (`level: 'ой'`) давала `maxHp = NaN`; дальше `hp -= dmg` — тоже NaN,
+   * а `if (hp <= 0)` при NaN всегда ложно: герой не умирал никогда, и в снимке
+   * всей комнате уходили `null`. Пропавшее `statPoints`: условие
+   * `statPoints <= 0` ложно на `undefined`, очки тратились бесконечно.
+   * Пропавшее `xp`: `xp >= xpNext` ложно на NaN, и герой молча переставал
+   * брать уровни.
+   *
+   * Правило простое: ничего из сохранения не принимаем на слово. Каждое
+   * число — конечное и в границах, иначе своё.
+   */
   fromJSON(d, reviveItem) {
+    const ч = (v, min, max, свой) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : свой;
+    };
+    const уровень = Math.round(ч(d.level, 1, MAX_LEVEL, 1));
+    const потолок = СТАТ_ПОТОЛОК(уровень);
     Object.assign(this, {
-      level: d.level, xp: d.xp, gold: d.gold,
-      str: d.str, vit: d.vit, agi: d.agi, int: d.int, statPoints: d.statPoints,
-      kills: d.kills || 0, deepest: d.deepest || 0,
-      stats: d.stats || { dmgDealt: 0, dmgTaken: 0, bossKills: 0 },
+      level: уровень,
+      xp: Math.round(ч(d.xp, 0, 1e12, 0)),
+      gold: Math.round(ч(d.gold, 0, 1e12, 0)),
+      // Характеристики не могут быть выше того, что даёт уровень: иначе
+      // достаточно попросить, и сервер посчитает бой по этим числам.
+      str: Math.round(ч(d.str, 1, потолок, 5)),
+      vit: Math.round(ч(d.vit, 1, потолок, 5)),
+      agi: Math.round(ч(d.agi, 1, потолок, 5)),
+      int: Math.round(ч(d.int, 1, потолок, 5)),
+      statPoints: Math.round(ч(d.statPoints, 0, (уровень - 1) * 3, 0)),
+      kills: Math.round(ч(d.kills, 0, 1e12, 0)),
+      deepest: Math.round(ч(d.deepest, 0, 9999, 0)),
+      stats: (d.stats && typeof d.stats === 'object') ? d.stats : { dmgDealt: 0, dmgTaken: 0, bossKills: 0 },
     });
     for (const s of SLOTS) this.equipment[s] = reviveItem(d.equipment ? d.equipment[s] : null);
     this.inventory = (d.inventory || []).map(reviveItem).filter(Boolean);
     this.refreshSprites();
-    this.hp = clamp(d.hp ?? this.maxHp, 1, this.maxHp);
-    this.mp = clamp(d.mp ?? this.maxMp, 0, this.maxMp);
+    const hp = Number(d.hp), mp = Number(d.mp);
+    this.hp = clamp(Number.isFinite(hp) ? hp : this.maxHp, 1, this.maxHp);
+    this.mp = clamp(Number.isFinite(mp) ? mp : this.maxMp, 0, this.maxMp);
     this.dead = false;
   }
 }

@@ -87,6 +87,7 @@ export class Menus {
   }
 
   openJournal(tab) {
+    this.drag = null;
     this.tab = tab || this.tab;
     this.mode = 'journal';
     this.scroll = 0;
@@ -96,6 +97,11 @@ export class Menus {
   close() {
     if (this.mode) audio.play('ui');
     this.sharpenArmed = 0;
+    // Начатое перетаскивание разрешает только вкладка заточки. Esc посреди
+    // него уходил сюда раньше, и предмет оставался «в руке»: иконка ехала за
+    // курсором поверх мира, а карточки сравнения в инвентаре молча переставали
+    // показываться — их условие проверяет как раз `drag`.
+    this.drag = null;
     this.mode = null;
     this.shop = null;
     this.dialogue = null;
@@ -198,6 +204,21 @@ export class Menus {
     itemSlot(g, this.mx - 13, this.my - 13, 26, this.drag.item, { time: this.game.time, hot: true });
   }
 
+  /** Снять вещь. `unequip` отказывает при полном рюкзаке — молчать об этом нельзя. */
+  снять(p, слот, it) {
+    if (p.unequip(слот)) this.game.toast('Снято: ' + it.name);
+    else { audio.play('deny'); this.game.toast('Рюкзак полон', UI.danger); }
+  }
+
+  /** Съесть нажатие, чтобы оно не досталось миру тем же кадром. */
+  гаситьНажатие(input, действие) {
+    input.mouse.justDown = false;
+    input.mouse.rightJustDown = false;
+    input.down.delete(действие);
+    input.justPressed.delete(действие);
+    input.consume(действие);
+  }
+
   processClicks(input) {
     if (this.mode === 'craft' && this.craftTab === 'sharpen' && this.handleDrag(input)) return;
     const click = input.mouse.justDown;
@@ -206,8 +227,13 @@ export class Menus {
       if (hit(this.mx, this.my, c.x, c.y, c.w, c.h)) {
         this.hover = c;
         if (c.item) { this.hoverItem = c.item; this.compare = c.compare; this.hoverPrice = c.price; this.hoverPriceLabel = c.priceLabel; }
-        if (rclick && c.onRight) { input.mouse.rightJustDown = false; audio.play('uiBig'); c.onRight(); return; }
-        if (click && c.action) { audio.play('ui'); c.action(); return; }
+        // Гасим нажатие целиком, а не только его «только что». Мышь кладёт в
+        // `down` ещё и действие 'attack' (клавиша та же), и если кнопка меню
+        // закрыла окно, то в этом же кадре герой успевал махнуть мечом:
+        // `paused` считается уже после `menus.update`. То же с пробелом — он
+        // разложен и в «подтвердить», и в «удар».
+        if (rclick && c.onRight) { this.гаситьНажатие(input, 'dash'); audio.play('uiBig'); c.onRight(); return; }
+        if (click && c.action) { this.гаситьНажатие(input, 'attack'); audio.play('ui'); c.action(); return; }
       }
     }
     if (click) input.mouse.justDown = false;
@@ -530,7 +556,7 @@ export class Menus {
       } else {
         text(g, 'пусто', tx, eqY + 9, { size: 9, color: 'rgba(110,98,146,0.6)' });
       }
-      this.add(eqX, eqY, eqW, PLATE, () => { if (it) { p.unequip(s); this.game.toast('Снято: ' + it.name); } }, { item: it });
+      this.add(eqX, eqY, eqW, PLATE, () => { if (it) this.снять(p, s, it); }, { item: it });
       eqY += ROW;
     }
 
@@ -557,7 +583,7 @@ export class Menus {
       text(g, lbl, rx + RS / 2, eqY + RS + 1.5, {
         size: 7, align: 'center', bold: true, color: it ? UI.accent : UI.textFaint,
       });
-      this.add(rx, eqY, RS, RS, () => { if (it) { p.unequip(s); this.game.toast('Снято: ' + it.name); } }, { item: it });
+      this.add(rx, eqY, RS, RS, () => { if (it) this.снять(p, s, it); }, { item: it });
     });
 
     // ── правая колонка: рюкзак
@@ -1006,7 +1032,7 @@ export class Menus {
     text(g, 'ESC — уйти', px + 12, py + ph - 14, { size: 8, color: UI.textFaint });
 
     const listX = px + 12, listY = py + 32, listW = pw - 24;
-    const items = this.shopTab === 'buy' ? shop.stock : p.inventory.filter((i) => i.kind !== 'material' || true);
+    const items = this.shopTab === 'buy' ? shop.stock : p.inventory;   // раньше здесь стоял фильтр-тавтология
     const rowH = 24;
     const maxRows = Math.floor((py + ph - 20 - listY) / rowH);
     const off = clamp(this.scroll, 0, Math.max(0, items.length - maxRows));
@@ -1018,7 +1044,11 @@ export class Menus {
       const y = listY + i * rowH;
       const hot = hit(this.mx, this.my, listX, y, listW, rowH - 2);
       const rar = RARITY[it.rarity] || RARITY.common;
-      const price = this.shopTab === 'buy' ? it.price : Math.max(1, Math.floor(it.price * 0.35));
+      // Продаётся стопка целиком (`sellItem` снимает `it.count`), значит и
+      // цена должна быть за стопку. Оценивали поштучно, а забирали пачкой:
+      // пятьдесят чешуек уходили за 52 золотых вместо 2600.
+      const шт = it.count || 1;
+      const price = this.shopTab === 'buy' ? it.price : Math.max(1, Math.floor(it.price * 0.35)) * шт;
       const afford = this.shopTab === 'sell' || p.gold >= price;
 
       listRow(g, listX, y, listW, rowH - 2, { rarity: it.rarity, hot });

@@ -71,6 +71,11 @@ export class Net {
         if (m.t === 'welcome') {
           this.pid = m.pid;
           this.world = m.world;
+          // Комната, в которой мы теперь: по ней отбраковываются снимки и
+          // события, долетевшие из прежней.
+          this.room = m.room || null;
+          this._events = [];
+          this.snaps.length = 0;
           this.state = 'online';
           this.clockOffset = m.now - Date.now();
           if (this.onWelcome) this.onWelcome(m);
@@ -105,6 +110,12 @@ export class Net {
     if (!this.online || !this.ws) return;
     this.snaps.length = 0;
     this.history.length = 0;
+    // Очередь событий чистилась не здесь, и лесное попадание отыгрывалось в
+    // болоте — на существе с тем же номером, но другом.
+    this._events = [];
+    // До нового `welcome` мы не знаем, в какой мы комнате: всё, что прилетит,
+    // относится к прежней.
+    this.room = null;
     try { this.ws.send(JSON.stringify({ t: 'travel', at })); } catch { /* см. выше */ }
   }
 
@@ -122,9 +133,16 @@ export class Net {
     this.pid = null;
     this.snaps.length = 0;
     this.history.length = 0;
+    this._events = [];
+    this.room = null;
   }
 
   _onSnap(m) {
+    // Снимок из прошлой комнаты применять нельзя: номера в нём означают других
+    // существ. Комната рассылает двадцать раз в секунду, и всё, что уже в
+    // полёте, приходит уже после входа в новую зону — при задержке от 420 мс
+    // это хоронило всё население новой зоны разом.
+    if (m.room && this.room && m.room !== this.room) return;
     if (m.ev && m.ev.length) (this._events ||= []).push(...m.ev);
     this.snaps.push(m);
     if (this.snaps.length > SNAP_KEEP) this.snaps.shift();

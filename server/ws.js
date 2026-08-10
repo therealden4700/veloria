@@ -15,7 +15,12 @@ import { createHash, randomBytes } from 'node:crypto';
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 /** Максимум на кадр: игровой ввод — десятки байт, всё крупнее подозрительно. */
-const MAX_FRAME = 1 << 20;   // 1 МБ
+// Сколько ждать первого сообщения от нового соединения.
+const HELLO_MS = 8000;
+const MAX_FRAME = 1 << 20;   // 1 МБ — один кадр
+// Собранное из продолжений сообщение: игра столько не шлёт, а расти без
+// потолка позволять нельзя.
+const MAX_MESSAGE = 2 << 20;
 
 export function acceptKey(key) {
   return createHash('sha1').update(key + GUID).digest('base64');
@@ -36,6 +41,7 @@ export class Conn {
     this.onclose = null;
     this.onerror = null;
     this.lastPong = Date.now();
+    this.gotFirst = false;
 
     this._buf = Buffer.alloc(0);
     this._frag = null;          // склейка продолжений
@@ -45,9 +51,19 @@ export class Conn {
     socket.on('close', () => this._closed(1006, 'сокет закрыт'));
     socket.on('error', (e) => { if (this.onerror) this.onerror(e); this._closed(1006, String(e && e.message)); });
     socket.setNoDelay(true);    // игре важнее задержка, чем экономия пакетов
+
+    // Срок на само соединение. Сборщик молчунов ходит по игрокам комнат, а
+    // сокет без `hello` не игрок ни в одной комнате — его не пинговали, не
+    // считали и закрыть было некому: сорок таких висели вечно, и /health
+    // показывал ноль игроков. Снимается первым же разобранным сообщением.
+    this._ждёмПервого = setTimeout(() => {
+      if (this.alive && !this.gotFirst) this.close(1008, 'не представился');
+    }, HELLO_MS);
+    if (this._ждёмПервого.unref) this._ждёмПервого.unref();
   }
 
   _closed(code, reason) {
+    if (this._ждёмПервого) { clearTimeout(this._ждёмПервого); this._ждёмПервого = null; }
     if (!this.alive) return;
     this.alive = false;
     try { this.socket.destroy(); } catch { /* уже мёртв */ }
@@ -96,31 +112,47 @@ export class Conn {
   }
 
   _handle(f) {
+    // Управляющие кадры фрагментировать нельзя — так говорит протокол, и так
+    // проще: иначе ping посреди склейки перепутается с данными.
+    if (f.op >= 0x8 && !f.fin) { this.close(1002, 'управляющий кадр фрагментирован'); return; }
+
     switch (f.op) {
       case 0x0: {                              // продолжение
         if (this._frag === null) { this.close(1002, 'продолжение без начала'); return; }
+        // Предел кадра стерёг ОДИН кадр, а склейку не стерёг никто: тысяча
+        // кусков по мегабайту — и память сервера растёт без потолка, причём до
+        // всякого `hello`, то есть кем угодно.
+        if (this._frag.length + f.payload.length > MAX_MESSAGE) { this.close(1009, 'сообщение слишком велико'); return; }
         this._frag = Buffer.concat([this._frag, f.payload]);
         if (f.fin) { const d = this._frag, op = this._fragOp; this._frag = null; this._deliver(op, d); }
-        break;
+        return;
       }
       case 0x1:                                // текст
       case 0x2:                                // двоичные
+        // Второй начальный кадр посреди незакрытой склейки — по протоколу
+        // нельзя, а у нас это молча теряло накопленное.
+        if (this._frag !== null) { this.close(1002, 'начало посреди склейки'); return; }
+        if (f.payload.length > MAX_MESSAGE) { this.close(1009, 'сообщение слишком велико'); return; }
         if (!f.fin) { this._frag = f.payload; this._fragOp = f.op; }
         else this._deliver(f.op, f.payload);
-        break;
+        return;
       case 0x8: {                              // закрытие
         const code = f.payload.length >= 2 ? f.payload.readUInt16BE(0) : 1005;
         this._sendFrame(0x8, f.payload.subarray(0, 2));
         this._closed(code, f.payload.subarray(2).toString('utf8'));
-        break;
+        return;
       }
-      case 0x9: this._sendFrame(0xa, f.payload); break;   // ping → pong
-      case 0xa: this.lastPong = Date.now(); break;        // pong
+      case 0x9: this._sendFrame(0xa, f.payload); return;   // ping → pong
+      case 0xa: this.lastPong = Date.now(); return;        // pong
       default: this.close(1002, 'неизвестный код операции');
     }
   }
 
   _deliver(op, data) {
+    if (!this.gotFirst) {
+      this.gotFirst = true;
+      if (this._ждёмПервого) { clearTimeout(this._ждёмПервого); this._ждёмПервого = null; }
+    }
     if (!this.onmessage) return;
     try {
       this.onmessage(op === 0x1 ? data.toString('utf8') : data, op === 0x2);

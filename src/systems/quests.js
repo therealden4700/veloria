@@ -547,15 +547,21 @@ export class Quests {
     player.gainXp(q.xp, game);
     let rewardItem = null;
     if (q.item) {
+      // При полном рюкзаке `addItem` возвращает false и выбрасывает вещь. А
+      // задание к этому моменту уже помечено сданным, материалы съедены, и
+      // игроку показано «Награда: …». Сюжетные задания не повторяются — вещь
+      // терялась навсегда. Рядом это давно сделано правильно: алтарь роняет
+      // отказанное на землю. Делаем так же.
+      const вручить = (it) => { if (!player.addItem(it) && game && game.spawnLoot) game.spawnLoot(player.x, player.y, { item: it }); };
       if (q.item.kind === 'consumable') {
-        for (let i = 0; i < (q.item.count || 1); i++) player.addItem(makeConsumable(q.item.key, 1));
+        for (let i = 0; i < (q.item.count || 1); i++) вручить(makeConsumable(q.item.key, 1));
         rewardItem = { name: makeConsumable(q.item.key, 1).name, rarity: 'common' };
       } else {
         const it = makeItem({
           kind: q.item.kind, tier: q.item.tier, rarity: q.item.rarity,
           level: Math.max(1, player.level), luck: 3,
         });
-        player.addItem(it);
+        вручить(it);
         rewardItem = it;
       }
     }

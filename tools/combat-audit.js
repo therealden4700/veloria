@@ -30,6 +30,7 @@ const { initProps } = await import('../src/art/props.js');
 const { bakeAllMonsters } = await import('../src/art/sprites.js');
 const { Player } = await import('../src/entities/player.js');
 const { Enemy, ENEMIES } = await import('../src/entities/enemies.js');
+const { nearestEnemy } = await import('../src/world/collide.js');
 const { swingHits, resolveHit } = await import('../src/systems/combat.js');
 const { markDamageMult } = await import('../src/systems/reactions.js');
 const { makeItem } = await import('../src/systems/items.js');
@@ -340,15 +341,10 @@ function skillStand(p, rng) {
     hasLineOfSight: () => true,
     moveEntity: NOOP,
     killEnemy(e) { e.dead = true; e.hp = 0; },
-    nearestEnemy(x, y, r, skip) {
-      let best = null, bd = r * r;
-      for (const e of w.enemies) {
-        if (e.dead || (skip && skip.has(e))) continue;
-        const d = (e.x - x) ** 2 + (e.y - e.r * 0.5 - y) ** 2;
-        if (d < bd) { bd = d; best = e; }
-      }
-      return best;
-    },
+    // Своей копии здесь быть не должно: она работала со списком задетых, а
+    // игра — нет, и стенд мерил цепную молнию, которой в игре не было. Ровно
+    // тот случай «расходятся копии», от которого проект и уходил.
+    nearestEnemy: (x, y, r, skip) => nearestEnemy(w.enemies, x, y, r, skip),
     damageEnemy(e, amount, opts = {}) {
       if (!e || e.dead) return;
       const hit = resolveHit(p, e, amount, opts, rng, markDamageMult);

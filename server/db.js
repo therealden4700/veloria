@@ -64,7 +64,16 @@ export function touchAccount(address) {
 }
 
 export function loadCharacter(address) {
-  const row = q('SELECT * FROM characters WHERE address = ?').get(address);
+  // `.get()` тоже может бросить: node:sqlite не умеет отдать целое больше 2^53
+  // и роняет чтение строки целиком. Такая строка запирала владельца снаружи —
+  // ни входа, ни персонажа, а try стоял только вокруг разбора JSON.
+  let row;
+  try {
+    row = q('SELECT * FROM characters WHERE address = ?').get(address);
+  } catch (e) {
+    console.error('чтение персонажа', address, '—', e.message);
+    return null;
+  }
   if (!row) return null;
   try {
     return { ...row, data: JSON.parse(row.data) };
@@ -75,9 +84,19 @@ export function loadCharacter(address) {
   }
 }
 
+/** Целое из чужих рук: только конечное и только в границах колонки. */
+const цел = (v, min, max, свой) => {
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : свой;
+};
+
 export function saveCharacter(address, data, name) {
-  const level = Number(data && data.player && data.player.level) || 1;
-  const deepest = Number(data && data.player && data.player.deepest) || 0;
+  // Границы здесь не украшение. Число больше 2^53 sqlite примет, а при чтении
+  // node:sqlite бросит RangeError — и одна такая строка отравляет всё, что её
+  // читает: доску глубины для всех и вход для самого владельца. Проверено
+  // одним POST с deepest = 1e18: /leaderboard и /auth/verify начали отдавать 500.
+  const level = цел(data && data.player && data.player.level, 1, 60, 1);
+  const deepest = цел(data && data.player && data.player.deepest, 0, 9999, 0);
   const text = JSON.stringify(data);
   if (text.length > 512 * 1024) return { ok: false, why: 'слепок слишком велик' };
   q(`INSERT INTO characters (address, name, level, deepest, updated, data)
@@ -92,8 +111,15 @@ export function saveCharacter(address, data, name) {
 
 /** Таблица глубины — то, ради чего в Бездну возвращаются. */
 export function topDepth(n = 20) {
-  return q('SELECT address, name, level, deepest FROM characters WHERE deepest > 0 ORDER BY deepest DESC, level DESC LIMIT ?')
-    .all(Math.min(100, Math.max(1, n | 0)));
+  // Старые строки могли лечь до проверки границ — одна такая не должна ронять
+  // доску целиком.
+  try {
+    return q('SELECT address, name, level, deepest FROM characters WHERE deepest > 0 ORDER BY deepest DESC, level DESC LIMIT ?')
+      .all(Math.min(100, Math.max(1, n | 0)));
+  } catch (e) {
+    console.error('доска глубины: битая строка в базе —', e.message);
+    return [];
+  }
 }
 
 export function dbStats() {

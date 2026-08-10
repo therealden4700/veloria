@@ -41,12 +41,44 @@ export function base58Decode(s) {
 const NONCE_TTL = 5 * 60 * 1000;      // пять минут на подпись — с запасом
 const nonces = new Map();             // одноразовое число → { address, born }
 
+// Сколько кодов и сессий держим. Обе карты наполняются с открытых входов —
+// `POST /auth/nonce` и `POST /auth/verify {guest:true}` не требуют ничего, — и
+// без потолка растут ровно столько, сколько к серверу обращаются.
+const MAX_NONCES = 20000;
+const MAX_SESSIONS = 50000;
+
+/**
+ * Убрать просроченное и, если всё ещё тесно, самое старое.
+ *
+ * Карты в JS хранят порядок вставки, поэтому «самое старое» — это первые ключи;
+ * перебирать всё ради этого не нужно.
+ */
+function подрезать(карта, ttl, потолок) {
+  const now = Date.now();
+  if (карта.size > потолок) {
+    for (const [k, v] of карта) {
+      if (now - v.born <= ttl && карта.size <= потолок) break;
+      карта.delete(k);
+      if (карта.size <= потолок * 0.9) break;
+    }
+  }
+}
+
+// Просрочку снимаем по времени, а не обходом на каждой выдаче: обход стоил
+// линейно от числа накопленных, то есть суммарно квадрат — и всё это в том же
+// однопоточном цикле, где идёт такт комнаты.
+const уборка = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of nonces) { if (now - v.born > NONCE_TTL) nonces.delete(k); else break; }
+  for (const [k, v] of sessions) { if (now - v.born > SESSION_TTL) sessions.delete(k); else break; }
+}, 60000);
+if (уборка.unref) уборка.unref();
+
 /** Выдать одноразовое число под конкретный адрес. */
 export function issueNonce(address) {
   const n = randomBytes(16).toString('hex');
   nonces.set(n, { address: String(address || ''), born: Date.now() });
-  // чистим просрочку заодно, чтобы не заводить отдельный таймер
-  for (const [k, v] of nonces) if (Date.now() - v.born > NONCE_TTL) nonces.delete(k);
+  подрезать(nonces, NONCE_TTL, MAX_NONCES);
   return n;
 }
 
@@ -114,6 +146,10 @@ const sessions = new Map();           // токен → { address, born, guest }
 export function newSession(address, guest = false) {
   const token = randomBytes(24).toString('hex');
   sessions.set(token, { address, born: Date.now(), guest });
+  // За токеном могут и не вернуться, а гостевой вход не требует ничего: без
+  // потолка карта росла на каждый заход на страницу и не убывала никогда —
+  // три тысячи запросов давали три тысячи вечных записей.
+  подрезать(sessions, SESSION_TTL, MAX_SESSIONS);
   return token;
 }
 

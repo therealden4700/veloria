@@ -260,6 +260,7 @@ export class Game {
   applyEnemySnapshot() {
     const snap = net.snaps[net.snaps.length - 1];
     if (!snap) return;
+    this._снаряды = snap.shots || [];
     const живые = new Set();
     for (const s of snap.enemies || []) {
       let e = this.enemyByNid(s.i);
@@ -336,6 +337,29 @@ export class Game {
         if (r) this.onReaction(e, ev.k, r, ev.pid === net.pid);
       } else if (ev.t === 'level' && ev.pid === net.pid) {
         this.onLevelUp(ev.n || 1);
+      } else if (ev.t === 'pdeath' && ev.pid === net.pid) {
+        // Смерть в общем мире считает комната: она снимает золото и пять
+        // секунд не принимает ввод. Клиент об этом не узнавал вовсе — вёл
+        // своё здоровье сам, экрана смерти не показывал, и единственным, что
+        // видел игрок, был рывок героя через полкарты, когда сверка не
+        // выдерживала расхождения.
+        const p = this.player;
+        p.hp = 0; p.dead = true; p.deadT = 0; p.pose = 'dead';
+        this.deathPenalty = ev.gold || 0;
+        p.gold = Math.max(0, p.gold - this.deathPenalty);
+        audio.play('die');
+        this.shake.add(10, 0.7);
+        this.menus.mode = 'death';
+      } else if (ev.t === 'praise' && ev.pid === net.pid) {
+        // Комната подняла: мир общий, лежать в нём некому и незачем.
+        const p = this.player;
+        p.dead = false; p.deadT = 0; p.pose = 'idle';
+        p.hp = p.maxHp; p.mp = p.maxMp;
+        p.x = ev.x; p.y = ev.y; p.vx = 0; p.vy = 0;
+        p.iframe = 2;
+        if (this.menus.mode === 'death') this.menus.close();
+        this.updateCamera(0, false);
+        this.toast('Ты снова на ногах', UI.good);
       } else if (ev.t === 'swing' && ev.pid !== net.pid) {
         // чужой взмах: своя отдача уже отыграна при нажатии
         const o = (this._others || []).find((x) => x.pid === ev.pid);
@@ -439,7 +463,12 @@ export class Game {
     // Копия уходит на сервер, если вход проверен. Местное сохранение при этом
     // остаётся: игра обязана работать и без сети, а чистка кэша браузера
     // больше не означает потерю персонажа.
-    if (isVerified()) {
+    // `ok` здесь обязателен. Местная защита отказывает, когда пишут не того
+    // героя (упавший уровень, непройденная проверка), а на сервере такой
+    // защиты нет и копий там нет тоже: запись затирается целиком. Отправлять
+    // наверх то, что не приняли у себя, — значит подменить единственный
+    // серверный экземпляр испорченным.
+    if (ok && isVerified()) {
       pushCharacter(data, getWallet().address ? shortenAddr(getWallet().address) : 'Странник')
         .catch(() => { /* нет связи — переживём, местная копия есть */ });
     }
@@ -628,6 +657,18 @@ export class Game {
     this.enemies.forEach((e, i) => { e.nid = i; });
     this._nextNid = this.enemies.length;
     this._byNid = null;
+    // Карта «кто кого убил» — про номера ЭТОЙ зоны. В каждой зоне номера
+    // начинаются с нуля, поэтому запись из прошлой означала бы здесь другое
+    // существо — и выдала бы за него добычу и опыт как за своё убийство.
+    this._убийцы = null;
+    this._снаряды = [];
+    // Лагеря засад живут на объекте зоны, а зона лежит в кэше. Без сброса
+    // отряд не рождался заново, а награда становилась недостижимой: условие
+    // «все мертвы» проверялось по шести живым сущностям прошлого посещения.
+    for (const ev of zone.events || []) {
+      if (ev.kind !== 'ambush') continue;
+      ev.done = false; ev.rewarded = false; ev.enemies = [];
+    }
     if (zone.boss) zone.boss.spawned = false;
 
     const sp = spawnAt || zone.spawnPoint;
@@ -679,7 +720,7 @@ export class Game {
 
   hasLineOfSight(a, b) { return hasLineOfSight(this.zone, a, b); }
 
-  nearestEnemy(x, y, r) { return nearestEnemy(this.enemies, x, y, r); }
+  nearestEnemy(x, y, r, skip) { return nearestEnemy(this.enemies, x, y, r, skip); }
 
   // ════════════════════════════ бой
 
@@ -1713,8 +1754,15 @@ export class Game {
       // ссылается ровно на этот индекс. Поэтому мы не выдумываем новые
       // сущности, а подтягиваем положение и здоровье к тому, что видит сервер:
       // спрайты, сортировка по глубине и вся отрисовка работают как прежде.
-      if (this.serverRunsCombat) this.applyEnemySnapshot();
-      else for (const e of this.enemies) e.update(dt, this);
+      if (this.serverRunsCombat) {
+        this.applyEnemySnapshot();
+        // `deadT` копит только `Enemy.update`, которого здесь нет, — и труп
+        // навсегда оставался с нулём: непрозрачный, в полный рост, от живого
+        // не отличить, а ударить нельзя. Стоял до самого возрождения номера.
+        for (const e of this.enemies) if (e.dead) e.deadT += dt;
+      } else {
+        for (const e of this.enemies) e.update(dt, this);
+      }
       for (let i = this.enemies.length - 1; i >= 0; i--) {
         const e = this.enemies[i];
         if (e.dead && e.deadT > 1.2) this.enemies.splice(i, 1);
@@ -2088,6 +2136,20 @@ export class Game {
     this.drawShafts(g, view);
     this.drawSlashes(g, view);
     for (const pr of this.projectiles) pr.draw(g, view);
+    // Чужие снаряды в общем мире считает комната — своих врагов клиент не
+    // обновляет и стрел не порождает. Рисуем прямо по снимку: без этого игрок
+    // получал бы урон от невидимых стрел.
+    for (const sh of this._снаряды || []) {
+      const x = Math.round(sh.x - view.x), y = Math.round(sh.y - view.y);
+      if (x < -10 || y < -10 || x > view.w + 10 || y > view.h + 10) continue;
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.fillStyle = sh.c2 || sh.c || '#ffd08a';
+      g.beginPath(); g.arc(x, y, Math.max(1, (sh.s || 3) * 0.6), 0, TAU); g.fill();
+      g.fillStyle = sh.c || '#ff8a3a';
+      g.beginPath(); g.arc(x, y, Math.max(1, sh.s || 3), 0, TAU); g.fill();
+      g.restore();
+    }
     this.particles.draw(g, view, 0);
     this.floats.draw(g, view);
 

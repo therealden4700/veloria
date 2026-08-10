@@ -19,6 +19,10 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachWebSocket } from './ws.js';
 import { World } from './world.js';
+// Списки мест и модификаторов берём из самих правил: перечислять их здесь
+// значило бы завести вторую копию, которая однажды разойдётся.
+import { BIOMES } from '../src/world/biomes.js';
+import { FLOOR_MODS } from '../src/systems/dungeon_mods.js';
 import { issueNonce, buildMessage, verifySignature, newSession, readSession, stats as authStats } from './auth.js';
 import { openDb, touchAccount, loadCharacter, saveCharacter, topDepth, dbStats } from './db.js';
 
@@ -72,13 +76,16 @@ class Room {
       joinedAt: Date.now(),
       lastSeen: Date.now(),
     };
-    this.players.set(conn.id, p);
-        // персонаж берётся из базы по адресу сессии, а не из слов клиента
+    // персонаж берётся из базы по адресу сессии, а не из слов клиента
     const character = p.address ? loadCharacter(p.address) : null;
     p.ent = this.world.addPlayer({
       pid: p.pid, name: p.name, address: p.address,
       look: hello && hello.look, character: character ? character.data : null,
     });
+    // Запись игрока — ПОСЛЕДНИМ действием. Раньше она стояла до чтения из базы,
+    // и исключение оставляло в комнате призрака: он попадал в размер и в
+    // рассылку, хотя сущности мира у него не было и `join` никому не ушёл.
+    this.players.set(conn.id, p);
     this.stats.joined++;
     this.stats.maxPlayers = Math.max(this.stats.maxPlayers, this.players.size);
 
@@ -136,7 +143,10 @@ class Room {
     // `ev` — что случилось за такт: попадания, промахи, смерти. Клиент играет
     // по ним зрелище. Раньше рассылка перечисляла поля поимённо и новое просто
     // не доехало: снимок его нёс, а до клиента он не добирался.
-    this.broadcast({ t: 'snap', tick: this.tick, now, players: s.players, enemies: s.enemies, ev: s.ev });
+    // Снимок помечен комнатой. Без этого клиент применял к новой зоне то, что
+    // уже летело из старой: чужой список хоронил всё население разом, а чужое
+    // событие `kill` выдавало добычу за убийство в другом месте.
+    this.broadcast({ t: 'snap', room: this.id, tick: this.tick, now, players: s.players, enemies: s.enemies, shots: s.shots, ev: s.ev });
   }
 
   sendTo(p, obj) {
@@ -272,28 +282,55 @@ const ГОРОД = 'city';
 
 function roomKey(dest) {
   if (!dest || dest.kind === 'city') return ГОРОД;
-  if (dest.kind === 'biome') return 'biome:' + String(dest.id || 'forest');
-  if (dest.kind === 'dungeon') return 'dungeon:' + (dest.floor | 0);
+  if (dest.kind === 'biome') {
+    const id = String(dest.id || 'forest');
+    // Незнакомый биом не строим: generateBiomeZone на нём бросает, а бросок
+    // здесь означал бы соединение без welcome и без закрытия — немой сокет.
+    return BIOMES[id] && id !== 'city' && id !== 'dungeon' ? 'biome:' + id : null;
+  }
+  if (dest.kind === 'dungeon') {
+    // Модификатор этажа — часть места, а не украшение: `generateDungeon`
+    // подмешивает его прямо в сид, и без него комната строит ДРУГОЕ
+    // подземелье. Клиент при этом принимает снимок как истину — номера
+    // означают у него других существ, а сервер считает столкновения по своей
+    // карте и тянет героя в стену клиентской.
+    const mod = FLOOR_MODS[dest.mod] ? String(dest.mod) : 'none';
+    return 'dungeon:' + Math.max(1, dest.floor | 0) + ':' + mod;
+  }
   return ГОРОД;
 }
 
 function roomFor(dest) {
   const key = roomKey(dest);
+  if (!key) return null;
   let r = rooms.get(key);
   if (r) return r;
+  const части = key.split(':');
   const opts = key === ГОРОД ? { kind: 'city', seed: 20260805 }
-    : key.startsWith('biome:') ? { kind: 'biome', id: key.slice(6), seed: 20260805 }
-    : { kind: 'dungeon', floor: Number(key.slice(8)) || 1, seed: 20260805 };
+    : части[0] === 'biome' ? { kind: 'biome', id: части[1], seed: 20260805 }
+    : { kind: 'dungeon', floor: Number(части[1]) || 1, mod: части[2] || 'none', seed: 20260805 };
   r = new Room(key, opts);
+  // Состояние возрождения переживает снос комнаты: иначе достаточно выйти в
+  // город и вернуться, чтобы получить полный биом и живого стража мгновенно.
+  const слепок = спящие.get(key);
+  if (слепок) { r.world.восстановить(слепок); спящие.delete(key); }
   rooms.set(key, r);
   console.log(`комната открыта: ${key} (${r.world.describe().name}, врагов ${r.world.describe().enemies})`);
   return r;
 }
 
+// Что помним о закрытой комнате: сроки павших, стража и лагерей. Сама зона
+// занимает около мегабайта и сносится, а слепок возрождения весит байты.
+const спящие = new Map();
+const СПЯЩИХ_ПОТОЛОК = 64;
+
 /** Убрать опустевшие комнаты, кроме города: он ждёт всегда. */
 function sweepRooms() {
   for (const [key, r] of rooms) {
     if (key === ГОРОД || r.size) continue;
+    // Мир общий, и он не должен начинаться заново оттого, что все вышли.
+    спящие.set(key, r.world.слепокВозрождения());
+    while (спящие.size > СПЯЩИХ_ПОТОЛОК) спящие.delete(спящие.keys().next().value);
     rooms.delete(key);
     console.log(`комната закрыта: ${key}`);
   }
@@ -346,11 +383,29 @@ attachWebSocket(http, (conn) => {
   // комната не пересылает его другой комнате, потому что источник правды —
   // база, а не соседняя комната.
   const переехать = (dest) => {
+    // Неизвестное место — не молчание, а внятный отказ. Раньше `hello` с
+    // несуществующим биомом бросал исключение в генераторе, оно глохло в
+    // доставке, и клиент не получал ни welcome, ни закрытия.
     const цель = roomFor(dest);
+    if (!цель) { conn.close(1008, 'нет такого места'); return; }
     if (цель === мояКомната) return;
-    if (player && мояКомната) мояКомната.remove(conn.id);
+    const прежняя = мояКомната;
+    if (player && прежняя) прежняя.remove(conn.id);
+    // Порядок важен: пока вход не удался, `мояКомната` не должна показывать на
+    // новую — иначе следующий `hello` упрётся в «уже там» и не сделает ничего,
+    // а клиент останется немым до таймаута.
+    let вошёл = null;
+    try {
+      вошёл = цель.add(conn, привет);
+    } catch (e) {
+      console.error(`вход в ${цель.id} не удался:`, e.message);
+      conn.close(1011, 'не удалось войти в комнату');
+      мояКомната = null; player = null;
+      sweepRooms();
+      return;
+    }
     мояКомната = цель;
-    player = цель.add(conn, привет);
+    player = вошёл;
     sweepRooms();
   };
 

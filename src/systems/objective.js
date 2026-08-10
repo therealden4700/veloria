@@ -11,6 +11,7 @@
 // цель за кадром.
 
 import { BIOMES, OVERWORLD } from '../world/biomes.js';
+import { ENEMIES } from '../entities/enemies.js';
 
 const ZONES = [...OVERWORLD, 'dungeon'];
 
@@ -18,7 +19,10 @@ const ZONES = [...OVERWORLD, 'dungeon'];
 function biomeOfEnemy(key) {
   for (const id of ZONES) {
     const b = BIOMES[id];
-    if (b && b.enemies && b.enemies.some(([k]) => k === key)) return id;
+    if (!b) continue;
+    // Не только рядовые: элита биома в таблицу `enemies` не входит, а задания
+    // на неё есть — «Титаны» вели в никуда именно поэтому.
+    if ((b.enemies && b.enemies.some(([k]) => k === key)) || b.elite === key || b.boss === key) return id;
   }
   return null;
 }
@@ -26,6 +30,41 @@ function biomeOfEnemy(key) {
 function biomeOfBoss(key) {
   for (const id of ZONES) if (BIOMES[id] && BIOMES[id].boss === key) return id;
   return null;
+}
+
+/**
+ * Где падает материал: сперва находим, кто его роняет, потом где он водится.
+ *
+ * Правило это знал только стенд содержимого (`tools/content-audit.js`), а
+ * указателю оно было нужно не меньше: у семи заданий «собери» цель — материал,
+ * и без этого пути указатель просто гас. Замер поймал: герой пять минут стоял
+ * в городе с активным заданием и без единой подсказки, куда идти.
+ */
+function biomeOfMaterial(key) {
+  let лучший = null;
+  for (const [ekey, def] of Object.entries(ENEMIES)) {
+    if (!def.drops || !def.drops.includes(key)) continue;
+    for (const id of ZONES) {
+      const b = BIOMES[id];
+      if (!b) continue;
+      const тут = (b.enemies && b.enemies.some(([k]) => k === ekey)) || b.boss === ekey || b.elite === ekey;
+      if (!тут) continue;
+      // Ведём в самое раннее место: туда игрок уже допущен наверняка.
+      if (!лучший || (b.unlockLevel || 1) < лучший.lvl) лучший = { id, lvl: b.unlockLevel || 1 };
+    }
+  }
+  return лучший && лучший.id;
+}
+
+/** Ближайший биом по уровню героя — для целей без своего места. */
+function biomeForLevel(level) {
+  let лучший = null;
+  for (const id of OVERWORLD) {
+    const b = BIOMES[id];
+    if (!b || (b.unlockLevel || 1) > level) continue;
+    if (!лучший || (b.unlockLevel || 1) > лучший.lvl) лучший = { id, lvl: b.unlockLevel || 1 };
+  }
+  return лучший && лучший.id;
 }
 
 /** Выход из текущей зоны в нужную сторону. */
@@ -93,12 +132,26 @@ export function objectiveOf(game) {
     const e = nearestEnemy(game, (x) => x.elite);
     if (e) return { x: e.x, y: e.y, label: q.title, tone: '#ffa63a' };
   }
+  if (q.type === 'collect') {
+    // Материал падает с определённых тварей — на них и указываем. Без этой
+    // ветки указатель гас ровно там, где игрок уже дошёл куда надо: он стоит
+    // в нужном биоме, вокруг те самые волки, а стрелки нет.
+    const e = nearestEnemy(game, (x) => ENEMIES[x.key] && ENEMIES[x.key].drops && ENEMIES[x.key].drops.includes(q.target));
+    if (e) return { x: e.x, y: e.y, label: q.title, tone: '#f0c05a' };
+  }
 
   // цель в другой зоне — ведём к нужному выходу
   const want = q.type === 'reach' ? q.target
     : q.type === 'depth' ? 'dungeon'
-    : q.type === 'boss' ? biomeOfBoss(q.target)
+    // Боссы Бездны не стоят ни в одном биоме: они выходят по очереди на
+    // глубоких этажах. Их место — спуск.
+    : q.type === 'boss' ? (biomeOfBoss(q.target) || 'dungeon')
     : (q.type === 'kill' || q.type === 'head') ? biomeOfEnemy(q.target)
+    // «Собери» и «убей элиту» своего места не называют, и указатель на них
+    // гас — а это девять заданий из тридцати одного. Материал ведём туда, где
+    // он падает; элиту — в биом по уровню героя: элиты есть в каждом.
+    : q.type === 'collect' ? biomeOfMaterial(q.target)
+    : q.type === 'elite' ? biomeForLevel(p.level)
     : null;
 
   if (want) {

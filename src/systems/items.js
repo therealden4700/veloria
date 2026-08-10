@@ -277,8 +277,12 @@ export function makeItem(o) {
   const kind = o.kind;
   const level = Math.max(1, o.level | 0 || 1);
   const tier = clamp(o.tier ?? Math.min(6, Math.floor((level - 1) / 5)), 0, 6);
-  const rarity = o.rarity || rollRarity(rng, o.luck || 0);
-  const rInfo = RARITY[rarity];
+  // Редкость из чужого файла может быть какой угодно. Соседние обращения
+  // нарочно защищены (`WEAPON_PROFILE[sub] || sword`, `MATERIALS[key] || {}`),
+  // а эти два выпадали из ряда — и один битый предмет ронял весь заход в игру:
+  // `continueGame` ничем не обёрнут, а `checkSave` в предметы не смотрит вовсе.
+  const rarity = RARITY[o.rarity] ? o.rarity : (o.rarity ? 'common' : rollRarity(rng, o.luck || 0));
+  const rInfo = RARITY[rarity] || RARITY.common;
 
   let sub = o.sub;
   if (!sub) {
@@ -460,13 +464,14 @@ const MATERIALS = {
 const RUNE_POWER = { common: 1.0, uncommon: 1.16, rare: 1.34, epic: 1.58, legendary: 1.95 };
 
 /** Руна: активная вставляется в слот умения, пассивная — в слот пассивки. */
-export function makeRune(key, rarity = 'common', level = 1) {
+export function makeRune(key, rarityIn = 'common', level = 1) {
+  const rarity = RARITY[rarityIn] ? rarityIn : 'common';
   const active = !!SKILLS[key];
   const def = active ? SKILLS[key] : PASSIVES[key];
   if (!def) return null;
   const power = RUNE_POWER[rarity] || 1;
   const elem = ELEM[def.elem] || ELEM.phys;
-  const rInfo = RARITY[rarity];
+  const rInfo = RARITY[rarity] || RARITY.common;
   return {
     id: nextId++, kind: 'rune', sub: key, runeType: active ? 'active' : 'passive',
     name: 'Руна: ' + def.name,
@@ -611,13 +616,24 @@ export function rollShopStock(shop, playerLevel, seed) {
  */
 export function reviveItem(o) {
   if (!o) return null;
-  // руна пересобирается целиком — так подтягиваются актуальные откаты и описания
-  if (o.kind === 'rune') {
-    const r = makeRune(o.sub, o.rarity || 'common', o.level || 1);
-    if (r) { r.id = o.id; return r; }
+  try {
+    // Счётчик id — модульный, он начинается с единицы при каждой загрузке
+    // страницы. Если его не подтянуть, свежий предмет получит id уже надетого,
+    // а по id строится ключ кэша комплектов: герой продолжал получать бонусы
+    // сета, который снял.
+    if (Number.isFinite(o.id) && o.id >= nextId) nextId = Math.floor(o.id) + 1;
+    // руна пересобирается целиком — так подтягиваются актуальные откаты и описания
+    if (o.kind === 'rune') {
+      const r = makeRune(o.sub, o.rarity || 'common', o.level || 1);
+      if (r) { r.id = o.id; return r; }
+      return null;
+    }
+    return { ...o, icon: itemIcon(o.kind, o.sub, o.tier || 0, o.rarity || 'common') };
+  } catch (e) {
+    // Один непонятный предмет не должен уносить весь сейв: теряем вещь, а не героя.
+    console.warn('предмет не восстановился и пропущен:', e.message);
     return null;
   }
-  return { ...o, icon: itemIcon(o.kind, o.sub, o.tier || 0, o.rarity || 'common') };
 }
 
 // Темп и дальность меча — мера для остальных: всё прочее считается от них.

@@ -60,10 +60,20 @@ export function hasLineOfSight(z, a, b) {
 }
 
 /** Ближайший живой враг в радиусе — цель для автонаведения и умений. */
-export function nearestEnemy(list, x, y, r) {
+/**
+ * Ближайший враг в радиусе.
+ *
+ * @param {Set} [skip] — кого не брать. Нужен цепным умениям: они прыгают от
+ *   цели к цели и передают сюда уже задетых. Довода не было, а звали его с
+ *   ним — молча терялся, и цепь била одну цель по кругу: после прыжка точка
+ *   отсчёта ставится ровно в цель, поэтому она же и оказывалась ближайшей на
+ *   расстоянии ноль. Ветвилось только если цель гибла от прыжка.
+ */
+export function nearestEnemy(list, x, y, r, skip) {
   let best = null, bd = r * r;
   for (const e of list) {
     if (e.dead) continue;
+    if (skip && skip.has(e)) continue;
     const d = dist2(x, y, e.x, e.y - e.r * 0.6);
     if (d < bd) { bd = d; best = e; }
   }

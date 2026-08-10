@@ -1905,6 +1905,112 @@ existed first.
 **What is still missing.** Loot on the ground is still each client's own, and the
 room does not validate what dropped.
 
+### A clean sweep for defects: thirty-six found, thirty-six fixed
+
+All twenty-one stands were green. That is exactly why the sweep was worth
+running: whatever they catch, they had already caught. Six independent passes
+went over the code by dimension — the online layer, the protocol, numeric
+hazards, lifetimes and leaks, saves, and the interface — and every finding had
+to come with a reproduction that runs. Thirty-six survived an adversarial
+re-check that tried to refute each one; not a single one was thrown out.
+
+**Four crashes.** Three of them were the same shape as `proc` and `onLevelUp`
+before them: shared rules calling something the room does not have. The steam
+reaction pushes into `game.hazards` — the room had no such field, and since the
+room applies weapon marks itself, a "Burning … icy" sword fired a reaction on the
+server and broke the swing mid-way: some targets took damage, the rest did not,
+and the cooldown was already spent. "Frost Heart", the only legendary on the
+`hurt` hook the room actually plays, calls `g.aoeDamage`, which did not exist —
+every hit on a player wearing it threw out of the entire tick. A rune with a
+rarity not in the table (`RARITY[rarity].mult`, no fallback where every neighbour
+has one) crashed `continueGame` outright: the save passed the integrity check,
+became the main slot, and "Continue" died every time from then on. And WebSocket
+continuation frames were capped per frame but not in total — a thousand
+one-megabyte pieces grew the server's memory without limit, before any `hello`,
+from anyone.
+
+**Eight ways to lose or corrupt data.** The shop priced a stack per item and took
+the whole stack: fifty dragon scales sold for 52 gold instead of 2600.
+`Player.fromJSON` was a bare `Object.assign` — and that one line was the widest
+hole in the game. A string where a number belongs (`level: 'ой'`) made `maxHp`
+NaN; then `hp -= dmg` is NaN too, and `if (hp <= 0)` is always false on NaN, so
+the hero never died and everyone in the room got `null` health in their snapshot.
+A missing `statPoints` made `statPoints <= 0` false on `undefined`, so points
+could be spent forever; a missing `xp` made `xp >= xpNext` false on NaN, and the
+hero silently stopped levelling. A quest reward vanished into nothing when the
+bag was full — `addItem` returns false and drops the item, while the quest was
+already marked done and the player was shown "Reward: …". A save the client
+itself had **rejected** still went up to the server, which keeps no copies and no
+checks. One `deepest: 1e18` broke the leaderboard for everyone and the owner's own
+login: sqlite stores it, `node:sqlite` throws `RangeError` reading it back, and
+neither call caught that. Item ids restarted from one on every page load, so a
+fresh drop took the id of something already worn — and set bonuses are cached by
+worn ids, so the hero kept the bonuses of a set they had taken off.
+
+**Five holes.** `Infinity` in a movement step survived `|| 0`, and
+`Math.hypot(∞,∞)` made the player's coordinates NaN permanently — after which
+nobody in the room could be chosen as "the nearest player", and if that hero was
+alone there, every creature froze. The character snapshot was authoritative:
+`level: 9999, str: 1e5` came back as a hero with 960 046 health and 1.9 billion
+damage, computed by the server. Sessions were created on an open guest endpoint
+and never evicted — three thousand requests, three thousand permanent entries.
+A socket that never sent `hello` belonged to no room, so nothing pinged it and
+nothing closed it: forty of them sat there while `/health` reported zero players.
+And the cosmetic `look` object, taken from `hello` unchecked, is embedded in every
+snapshot to every player twenty times a second.
+
+**Nineteen more of wrong behaviour**, of which the sharpest were shared-world
+ones. Chain Lightning and Thunderer hit a single target four times instead of
+chaining: `nearestEnemy` had no "already hit" argument, both callers passed one
+anyway, and the wrappers dropped it silently — while the skills audit kept its
+**own** copy of `nearestEnemy` that honoured it, so the stand was measuring a
+chain the game did not have. Enemy projectiles were created and then never
+touched: the list grew for the lifetime of the room, and archers and casters did
+no damage at all in the shared world. Corpses never faded online — `deadT` only
+grows inside `Enemy.update`, which the online path skips, so a body stood at full
+opacity, indistinguishable from a live monster and unhittable, until the room
+respawned it. A dungeon room ignored the floor modifier, so client and room built
+**different maps**. A room swept when its last player left took the whole
+respawn state with it — leave to the city and come back for a full biome and a
+live guardian on the spot.
+
+The fixes follow this project's usual rule: put it where the rule already lives.
+Where a material drops was known only to the content audit, so the objective
+pointer went blank on nine quests out of thirty-four — that lookup now lives in
+`systems/objective.js` and the audit's private copy of `nearestEnemy` is gone.
+
+[`tools/hardening-check.js`](tools/hardening-check.js) guards all of it: twenty-nine
+checks that each replay the original defect. It was mutation-tested three ways —
+trusting the snapshot again, dropping the chain's skip list, removing
+`aoeDamage` — and went red on all three.
+
+**And the eleventh case of the instrument lying**, this time mine. The workflow
+stitched findings to verdicts by exact title match, and the verifiers had
+rewritten the titles — so only twelve of the thirty-six confirmed findings
+reached the synthesis. The other twenty-four were sitting in the journal the
+whole time.
+
+### A flaky check is worse than none
+
+The onboarding audit went red one run in ten — and had been doing so before any
+of this work: measured 3 of 24 before the fixes and 2 of 24 after. That is not a
+regression, it is a check nobody can trust, and this project already knows what
+those are worth.
+
+Two real gaps did come out of chasing it. The objective pointer returned nothing
+for `collect` and `elite` quests — nine of thirty-four — because their target is
+not a place; and inside the right biome it went blank instead of pointing at the
+creature that drops the material. Both are fixed, and the audit now checks the
+rule **deterministically**: every quest, standing in the city, must yield a
+destination. 34 of 34.
+
+The residual flakiness was the bot's own blindness, and it is now reported as
+such rather than as a finding. Two checks were passing `Infinity` straight
+through — "long until the first fight: Infinity seconds" is a statement about a
+bot that never fought, not about the game. Measured across thirty runs, the real
+first kill lands at 21–30 seconds, once at 39. After separating the verdict from
+the observation: 0 red in 40 runs.
+
 ### A room per biome
 
 There was one room and it was the city forever. That is what kept co-op locked
