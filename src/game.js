@@ -43,6 +43,7 @@ import { corruptionOf, corruptionEffects, corruptionName, ABYSS_START } from './
 import { nextLesson, LESSON_BY_KEY, LESSONS, LESSON_GAP } from './systems/lessons.js';
 import { toggleFullscreen, isFullscreen } from './core/screen.js';
 import { abyssUniquesFor, breachUniquesFor } from './systems/uniques.js';
+import { rollDrops } from './systems/loot.js';
 import { canAfford, craftItem, salvageYield, reforgeCost, sharpenChance, sharpenCost,
          sharpenFuel, applySharpen, matName, SHARP_MAX,
          sharpFloor, revertToMilestone } from './systems/craft.js';
@@ -257,10 +258,29 @@ export class Game {
     return this._byNid.get(nid);
   }
 
+  /**
+   * Сверить свои числа с тем, что насчитал мир.
+   *
+   * Золото, опыт и уровень теперь ведёт комната — клиент их только показывает.
+   * Без сверки они разойдутся: клиент прибавляет по событиям, комната считает
+   * по-настоящему, и первая же потеря сообщения оставит игрока с враньём на
+   * экране.
+   */
+  applyMe() {
+    const m = net.me;
+    if (!m || !this.serverRunsCombat) return;
+    const p = this.player;
+    if (Number.isFinite(m.gold)) p.gold = m.gold;
+    if (Number.isFinite(m.xp)) p.xp = m.xp;
+    if (Number.isFinite(m.pts)) p.statPoints = m.pts;
+    if (Number.isFinite(m.lvl) && m.lvl > p.level) { p.level = m.lvl; p.refreshSprites(); }
+  }
+
   applyEnemySnapshot() {
     const snap = net.snaps[net.snaps.length - 1];
     if (!snap) return;
     this._снаряды = snap.shots || [];
+    this.loot = snap.loot || [];
     const живые = new Set();
     for (const s of snap.enemies || []) {
       let e = this.enemyByNid(s.i);
@@ -335,6 +355,17 @@ export class Game {
         // задания, и зачёт только за свою.
         const r = REACTIONS[ev.k];
         if (r) this.onReaction(e, ev.k, r, ev.pid === net.pid);
+      } else if (ev.t === 'took' && ev.pid === net.pid) {
+        // Вещь пришла от комнаты: она её уронила, она её и отдала. Здесь
+        // остаётся положить в рюкзак и показать — считать было нечего.
+        const p = this.player;
+        if (ev.gold) { p.gold += ev.gold; this.floats.add(p.x, p.y - 30, '+' + ev.gold, { color: '#ffd76a', size: 10 }); }
+        if (ev.item) {
+          const it = reviveItem(ev.item);
+          if (it) { p.addItem(it); this.hud.pickupNote ? this.hud.pickupNote(it) : this.toast(t(it.name), (RARITY[it.rarity] || RARITY.common).color); }
+        }
+        audio.play('pickup', 0.8);
+        if (this._прошено) this._прошено.delete(ev.lid);
       } else if (ev.t === 'level' && ev.pid === net.pid) {
         this.onLevelUp(ev.n || 1);
       } else if (ev.t === 'pdeath' && ev.pid === net.pid) {
@@ -925,68 +956,44 @@ export class Game {
     }
   }
 
+  /**
+   * Добыча с убитого.
+   *
+   * Состав решает общее правило `rollDrops` — то же, которым роняет комната.
+   * Здесь остаётся только разбросать выпавшее по земле.
+   *
+   * В общем мире этот путь не работает вовсе: там роняет комната и она же
+   * знает, чья добыча. Иначе клиент сам решал бы, что ему выпало, — а свой
+   * рюкзак он же и присылает на сервер.
+   */
   dropLoot(e) {
-    const rng = makeRng((e.x * 31 + e.y * 17 + this.time * 1000) | 0);
+    if (this.serverRunsCombat) return;
+    const выпало = rollDrops(e, {
+      zone: this.zone, corr: this.corruption || 0, ce: this.player._corr,
+      level: this.player.level, seed: (e.x * 31 + e.y * 17 + this.time * 1000) | 0,
+    });
+    for (const д of выпало) this.spawnLoot(e.x, e.y, д);
+  }
+
+  /**
+   * Добыча общего мира: список приходит снимком, поднятие идёт через комнату.
+   *
+   * Просить дважды одно и то же не нужно — но и полагаться на то, что комната
+   * ответит мгновенно, нельзя: пока ответа нет, вещь остаётся лежать. Держим
+   * недавно спрошенные, чтобы не слать одно и то же двадцать раз в секунду.
+   */
+  updateSharedLoot(dt) {
     const p = this.player;
-    // золото
-    const mod = this.zone.mod || {};
-    const gold = Math.round(e.goldValue * (0.7 + rng() * 0.8) * (mod.goldMul || 1));
-    if (gold > 0) this.spawnLoot(e.x, e.y, { gold });
-    // материалы
-    const drops = e.def.drops || [];
-    for (const m of drops) {
-      if (rng() < (e.boss ? 1 : e.elite ? 0.6 : 0.34)) this.spawnLoot(e.x, e.y, { item: makeMaterial(m, 1) });
+    const прошено = this._прошено || (this._прошено = new Map());
+    for (const [lid, t] of прошено) if (this.time - t > 1.5) прошено.delete(lid);
+    if (p.dead) return;
+    for (const l of this.loot) {
+      if (l.o !== null && l.o !== net.pid && l.m > 0) continue;   // ещё чужая
+      if (dist(l.x, l.y, p.x, p.y - 4) > 22) continue;
+      if (прошено.has(l.i)) continue;
+      прошено.set(l.i, this.time);
+      net.pickup(l.i);
     }
-    // ── добыча Бездны: слёзы и порог редкости
-    const corr = this.corruption || 0;
-    const ce = this.player._corr;
-    if (corr) {
-      const tearChance = (e.boss ? 1 : e.elite ? 0.30 : 0.05) * (1 + corr * 0.02);
-      if (rng() < tearChance) this.spawnLoot(e.x, e.y, { item: makeMaterial('abyssTear', 1) });
-    }
-    // снаряжение
-    const chance = (e.boss ? 1 : e.elite ? 0.45 : 0.1) * (mod.lootMul || 1) * (ce ? ce.lootMul : 1);
-    if (rng() < chance) {
-      const kinds = ['weapon', 'armor', 'helm', 'trinket'];
-      // порог редкости: на глубине нижние ступени просто перестают выпадать
-      const floorR = ce ? ce.rarityFloor : 0;
-      // Что именно выпадет — решает `dropRarity`, одна на игру и на стенд.
-      // Потолок берётся у места: в первом биоме легендарке взяться неоткуда.
-      const rarity = dropRarity(rng, {
-        boss: e.boss, elite: e.elite, floorRarity: floorR, corr, cap: this.zone.maxRarity,
-      });
-      const kind = rng.pick(kinds);
-      // свойства Бездны — только с элиты и боссов на испорченных этажах
-      const abyssPool = corr >= 6 && (e.boss || e.elite) ? abyssUniquesFor(kind) : [];
-      const wantAbyss = abyssPool.length && rng() < (e.boss ? 0.22 : 0.05) * (1 + corr * 0.03);
-      // Свойства Пролома — только с его обитателей, и без порчи: биом
-      // наземный, до него не докатывается ни один этаж Бездны. Иначе
-      // легендарка биома выпадала бы где угодно и перестала быть его.
-      const breachPool = !wantAbyss && this.zone.biomeId === 'breach' ? breachUniquesFor(kind) : [];
-      const wantBreach = breachPool.length && rng() < (e.boss ? 0.28 : e.elite ? 0.07 : 0.012);
-      this.spawnLoot(e.x, e.y, {
-        item: makeItem({
-          kind, level: e.level, rng, luck: e.boss ? 6 : 2,
-          rarity: wantAbyss || wantBreach ? 'legendary' : rarity,
-          unique: wantAbyss ? rng.pick(abyssPool) : wantBreach ? rng.pick(breachPool) : undefined,
-        }),
-      });
-    }
-    // руны умений: редкая, но самая желанная добыча
-    const runeChance = (e.boss ? 1 : e.elite ? 0.16 : 0.028) * (mod.lootMul || 1);
-    if (rng() < runeChance) {
-      const runeCap = e.boss ? raiseRarity(this.zone.maxRarity, 1) : this.zone.maxRarity;
-      this.spawnLoot(e.x, e.y, { item: rollRune(rng, e.level, e.boss ? (rng() < 0.5 ? 'legendary' : 'epic') : null, runeCap) });
-    }
-    if (e.boss) {
-      for (let i = 0; i < 2; i++) {
-        const extra = capRarity(rollRarity(rng, 6), raiseRarity(this.zone.maxRarity, 1));
-        this.spawnLoot(e.x, e.y, { item: makeItem({ kind: rng.pick(['weapon', 'armor', 'helm', 'trinket']), level: e.level, rarity: extra, rng, luck: 6 }) });
-      }
-      this.spawnLoot(e.x, e.y, { item: makeConsumable('potionL', 3) });
-    }
-    // зелья
-    if (rng() < 0.08) this.spawnLoot(e.x, e.y, { item: makeConsumable(p.level > 12 ? 'potionM' : 'potionS', 1) });
   }
 
   spawnLoot(x, y, data) {
@@ -1755,6 +1762,7 @@ export class Game {
       // сущности, а подтягиваем положение и здоровье к тому, что видит сервер:
       // спрайты, сортировка по глубине и вся отрисовка работают как прежде.
       if (this.serverRunsCombat) {
+        this.applyMe();
         this.applyEnemySnapshot();
         // `deadT` копит только `Enemy.update`, которого здесь нет, — и труп
         // навсегда оставался с нулём: непрозрачный, в полный рост, от живого
@@ -1957,6 +1965,10 @@ export class Game {
 
   updateLoot(dt) {
     const p = this.player;
+    // В общем мире добыча лежит в комнате: там её уронили, там она числится за
+    // хозяином и оттуда попадает в рюкзак. Клиент только показывает её и
+    // просит поднять — решает всё равно комната.
+    if (this.serverRunsCombat) { this.updateSharedLoot(dt); return; }
     for (let i = this.loot.length - 1; i >= 0; i--) {
       const l = this.loot[i];
       l.t += dt;
@@ -2487,7 +2499,18 @@ export class Game {
   }
 
   drawLoot(g, l, camX, camY) {
+    // Добыча общего мира приходит снимком в коротком виде: у неё нет ни высоты
+    // подскока, ни собранной вещи — только место, вид и редкость. Приводим к
+    // одному виду здесь, чтобы рисование не знало, откуда взялась запись.
+    if (l.i !== undefined && l.k !== undefined) {
+      l = {
+        x: l.x, y: l.y, z: 0, gold: l.g,
+        item: l.k ? (l._и || (l._и = { kind: l.k, rarity: l.r || 'common', icon: itemIcon(l.k, null, 0, l.r || 'common') })) : null,
+        чужая: l.o !== null && l.o !== net.pid && l.m > 0,
+      };
+    }
     const x = Math.round(l.x - camX), y = Math.round(l.y - l.z - camY);
+    if (l.чужая) g.globalAlpha = 0.45;   // не твоя — видно, но пока не взять
     const bob = Math.sin(this.time * 4 + l.x) * 1.2;
     g.save();
     g.globalAlpha = 0.3;
@@ -2520,6 +2543,7 @@ export class Game {
         g.restore();
       }
     }
+    g.globalAlpha = 1;
   }
 
   /**

@@ -1712,6 +1712,62 @@ A biome room is raised with a variable (`ROOM_BIOME=forest`): in the city there
 is nobody to measure combat against, it is safe by design. The same thing will be
 needed when parties go out into the zones.
 
+### Progress is computed by the world, not sent by the client
+
+`db.js` had been honest about this from the start: the server **stored** the
+character but verified nothing — the snapshot arrived from the client whole.
+Combat moved to the room, then spawns, then loot ownership; what stayed was the
+last and widest door.
+
+**Measured first, as a dishonest client.** A stand signs in with a real
+keypair — exactly what Phantom does, just by hand — and asks for what it never
+earned: a legendary with 9999 attack and 9 999 999 gold. The server took it,
+wrote it to the database and handed it back on the next login.
+
+Loot is the room's now. It rolls the drop through the same rule the game rolls
+it with (`systems/loot.js` — one rule, no copies), keeps it on the ground with
+an owner, and hands it over only through `pickup`, which checks three things the
+client could lie about: that the item exists, that it is within 26 px, and that
+it is yours. It is yours for the first minute; after that anyone can take it,
+because loot belonging to someone who logged off should not lie there forever.
+
+**Two characters per address, and that is the boundary of trust.** `data` is a
+backup of the single-player hero: the client sends it, nothing can verify it, and
+it exists for exactly one purpose — so a character is not lost with the browser
+cache. It never enters the shared world. `world` is the world's hero: the room
+computes it and the room writes it. The client does not touch that column.
+
+That is the whole fix. The first version was weaker — accept the client's
+snapshot once, "to migrate an offline hero" — and the measurement went straight
+through it: a fresh account uploads a legendary and walks in with it. There is no
+way to tell an earned legendary from a requested one, so imported heroes are not
+a thing. The shared world starts you in it.
+
+The room also tells each player their own numbers (`me`, five times a second):
+gold, experience, level, points. Not in the shared snapshot — nobody else's gold
+is anyone's business — and not optional either: the client used to keep those
+numbers itself, and now that the room computes them, one lost message would leave
+a lie on the screen.
+
+[`tools/progress-server-check.js`](tools/progress-server-check.js) is that
+dishonest client, kept: it asks for the legendary, enters the world and finds
+itself at level 1 with a rank-0 sword; kills something and watches the room drop
+the loot, refuse it from 84 px, hand it over up close; then logs out and back in
+and checks that the gold and experience the world counted are still there. Three
+mutations were tried against it — the room reading the client's backup again,
+pickup without a distance check, the room not writing at all — and it went red on
+all three. The distance check only caught its mutation after the stand was taught
+to **walk away first**: loot falls at your feet, so the check had been silently
+skipped.
+
+Verified in the browser end to end: kill, walk over the drop, and the client's
+numbers match the world's exactly — 47 gold and 15 experience on both sides.
+
+**What is still missing.** Buying, selling, forging and sharpening still happen
+on the client: in the shared world those change gold and items too, and the room
+does not see them yet. The single-player game is deliberately untouched — it must
+work without a network at all.
+
 ### The client hands combat over
 
 The room could compute combat; the game was still computing it for itself. Now

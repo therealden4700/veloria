@@ -23,6 +23,7 @@ const { Enemy } = await import('../src/entities/enemies.js');
 const collide = await import('../src/world/collide.js');
 const { Player } = await import('../src/entities/player.js');
 const { reviveItem, WEAPON_PROFILE } = await import('../src/systems/items.js');
+const { rollDrops } = await import('../src/systems/loot.js');
 const { swingHits, resolveHit, aoeTargets, skillRoll } = await import('../src/systems/combat.js');
 const { markDamageMult, tryShatter } = await import('../src/systems/reactions.js');
 const { angle } = await import('../src/core/util.js');
@@ -73,6 +74,10 @@ const RESPAWN_MAX_WAIT = RESPAWN * 2;
 // Страж — событие, а не поголовье: возвращается вчетверо реже и только когда в
 // арену снова вошли. Появиться в упор ему можно и нужно — за этим и идут.
 const BOSS_RESPAWN = RESPAWN * 4;
+// Добыча: сколько она своя, сколько лежит вообще и с какого расстояния берётся.
+const LOOT_MINE = 60;
+const LOOT_LIFE = 300;
+const PICKUP_R = 26;
 
 
 
@@ -103,6 +108,9 @@ export class World {
     // Без поля это был `TypeError` посреди взмаха: часть целей урон получила,
     // остальные нет, а откат уже выставлен.
     this.hazards = [];
+    this.loot = [];
+    this.nextLid = 1;
+    this.dirty = false;   // персонажей есть что записать
     // Что случилось за такт: попадания, промахи, смерти. Клиент по ним играет
     // зрелище — искры и числа, — а решает всё равно сервер.
     this.events = [];
@@ -195,6 +203,8 @@ export class World {
       // слово нельзя.
       if (p.gainXp) p.gainXp(e.xpValue || 0, this);
     }
+    this.dropLoot(e, p);
+    this.dirty = true;
     e._вернётся = this.time + (e.boss ? BOSS_RESPAWN : RESPAWN);
     e._крайний = this.time + RESPAWN_MAX_WAIT;   // дольше держать пусто не даём
     this.events.push({ t: 'kill', i: this.enemies.indexOf(e), by: p ? p.pid : null });
@@ -370,6 +380,56 @@ export class World {
   }
 
   /**
+   * Уронить добычу с убитого — по общему правилу и с хозяином.
+   *
+   * До сих пор комната не роняла ничего: добычу решал клиент, а рюкзак
+   * присылал он же. Измерено: настоящая учётка попросила легендарку с атакой
+   * 9999 и девять миллионов золота — сервер положил это в базу и вернул при
+   * входе. Теперь падает здесь, лежит здесь и попадает в рюкзак только через
+   * `pickup`.
+   *
+   * Своё у каждого: вещь видит и поднимает тот, кто убил. Через минуту она
+   * становится общей — иначе добыча ушедшего лежала бы вечно.
+   */
+  dropLoot(e, by) {
+    const выпало = rollDrops(e, {
+      zone: this.zone, corr: 0, ce: null,
+      level: (by && by.level) || 1,
+      seed: (e.x * 31 + e.y * 17 + this.time * 1000) | 0,
+    });
+    for (const д of выпало) {
+      const a = Math.random() * Math.PI * 2;
+      this.loot.push({
+        lid: this.nextLid++, x: e.x + Math.cos(a) * 10, y: e.y + Math.sin(a) * 10,
+        gold: д.gold || 0, item: д.item || null,
+        owner: by ? by.pid : null, ничей: this.time + LOOT_MINE, until: this.time + LOOT_LIFE,
+      });
+    }
+  }
+
+  /**
+   * Поднять лежащее. Проверяем всё, о чём клиент мог соврать: что вещь есть,
+   * что она рядом и что она его.
+   */
+  pickup(pid, lid) {
+    const p = this.players.get(pid);
+    if (!p || p.dead) return;
+    const i = this.loot.findIndex((l) => l.lid === (lid | 0));
+    if (i < 0) return;
+    const l = this.loot[i];
+    if (l.owner !== null && l.owner !== pid && this.time < l.ничей) return;   // ещё чужая
+    if ((p.x - l.x) ** 2 + (p.y - l.y) ** 2 > PICKUP_R * PICKUP_R) return;    // не дотянуться
+    if (l.gold) {
+      p.gold = (p.gold || 0) + l.gold;
+    } else if (l.item) {
+      if (!p.addItem(l.item)) return;      // рюкзак полон — вещь остаётся лежать
+    }
+    this.loot.splice(i, 1);
+    this.dirty = true;
+    this.events.push({ t: 'took', pid, lid: l.lid, gold: l.gold || 0, item: l.item || null });
+  }
+
+  /**
    * Взятый уровень.
    *
    * Опыт теперь считает комната, а значит и уровень берётся здесь — и `gainXp`
@@ -538,6 +598,8 @@ export class World {
     this.bossTrigger();
     this.ambushTrigger();
     this.raiseDead();
+    // Лежалое убираем: иначе список растёт всё время жизни комнаты.
+    for (let i = this.loot.length - 1; i >= 0; i--) if (this.time > this.loot[i].until) this.loot.splice(i, 1);
 
     // Игроков такт не двигает: они двигаются в `applyInput`, ровно теми шагами,
     // которые проиграл клиент. Здесь остаются только враги — у них своё время.
@@ -636,6 +698,15 @@ export class World {
       shots: this.projectiles.filter((pr) => !pr.dead).slice(0, 60).map((pr) => ({
         x: Math.round(pr.x), y: Math.round(pr.y),
         c: pr.color, c2: pr.color2, s: pr.size, g: pr.glow,
+      })),
+      // Добыча — часть общего мира: её видно всем, но поднять первую минуту
+      // может только хозяин. Вещь целиком не шлём: до поднятия клиенту хватает
+      // вида и редкости, а полное описание он получит вместе с ней.
+      loot: this.loot.slice(0, 120).map((l) => ({
+        i: l.lid, x: Math.round(l.x), y: Math.round(l.y),
+        g: l.gold || 0,
+        k: l.item ? l.item.kind : null, r: l.item ? l.item.rarity : null,
+        o: l.owner, m: +(l.ничей - this.time).toFixed(1),
       })),
       ev: this.events.splice(0, this.events.length),
     };

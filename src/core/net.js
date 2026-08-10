@@ -80,6 +80,9 @@ export class Net {
           this.clockOffset = m.now - Date.now();
           if (this.onWelcome) this.onWelcome(m);
           done(m);
+        } else if (m.t === 'me') {
+          this.me = m;
+          if (this.onMe) this.onMe(m);
         } else if (m.t === 'snap') {
           this._onSnap(m);
         } else if (m.t === 'pong') {
@@ -103,6 +106,12 @@ export class Net {
   sendSwing(combo, facing) {
     if (!this.online || !this.ws) return;
     try { this.ws.send(JSON.stringify({ t: 'swing', combo, f: +facing.toFixed(2) })); this.stats.sent++; } catch { /* оборвалось — переживём */ }
+  }
+
+  /** Поднять лежащее: решает комната, мы только просим. */
+  pickup(lid) {
+    if (!this.online || !this.ws) return;
+    try { this.ws.send(JSON.stringify({ t: 'pickup', lid })); this.stats.sent++; } catch { /* оборвалось */ }
   }
 
   /** Переезд в другую комнату тем же соединением. */

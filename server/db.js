@@ -8,12 +8,20 @@
 // рекордов, а лезть за этим внутрь слепка каждого игрока — верный способ
 // получить полный перебор на ровном месте.
 //
-// Честно о том, чем это пока не является. Сервер ХРАНИТ персонажа и выдаёт его
-// по подписи — то есть прогресс больше не теряется с кэшем браузера и не
-// принадлежит устройству. Но проверять КАЖДОЕ изменение он пока не умеет:
-// слепок приходит от клиента целиком. Чтобы сервер стал источником правды, а не
-// сейфом, мутации должны считаться на нём — это следующая работа, и начнётся
-// она с боя.
+// Персонажей у адреса два, и это не небрежность, а граница доверия.
+//
+// `data` — резервная копия одиночной игры. Её присылает клиент, и проверить её
+// нельзя ничем: в слепке можно попросить что угодно. Она нужна ровно для
+// одного — чтобы герой не пропал вместе с кэшем браузера. В общий мир она не
+// входит никогда.
+//
+// `world` — герой общего мира. Его считает комната: бой, добыча, опыт и
+// уровень меняются только там и оттуда же уезжают сюда. Клиент к этой колонке
+// не притрагивается.
+//
+// Раньше колонка была одна, и та, которую присылает клиент. Замер: настоящая
+// учётка попросила легендарку с атакой 9999 и девять миллионов золота — сервер
+// положил это в базу и вернул при следующем входе.
 
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
@@ -44,11 +52,15 @@ export function openDb(file = FILE) {
       level     INTEGER NOT NULL DEFAULT 1,
       deepest   INTEGER NOT NULL DEFAULT 0,
       updated   INTEGER NOT NULL,
-      data      TEXT NOT NULL
+      data      TEXT NOT NULL,
+      world     TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_depth ON characters(deepest DESC);
     CREATE INDEX IF NOT EXISTS idx_level ON characters(level DESC);
   `);
+  // База могла родиться до разделения на «копию клиента» и «героя мира».
+  const колонки = db.prepare('PRAGMA table_info(characters)').all().map((c) => c.name);
+  if (!колонки.includes('world')) db.exec('ALTER TABLE characters ADD COLUMN world TEXT');
   return db;
 }
 
@@ -90,6 +102,37 @@ const цел = (v, min, max, свой) => {
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : свой;
 };
 
+/**
+ * Герой общего мира — тот, которого считает комната.
+ *
+ * Возвращает `null`, если этот адрес в мир ещё не входил: тогда комната
+ * начинает ему нового. Копию из одиночной игры сюда не берём никогда — её
+ * прислал клиент, и верить ей нечем.
+ */
+export function loadWorldCharacter(address) {
+  let row;
+  try { row = q('SELECT world FROM characters WHERE address = ?').get(address); }
+  catch (e) { console.error('чтение героя мира', address, '—', e.message); return null; }
+  if (!row || !row.world) return null;
+  try { return JSON.parse(row.world); } catch { return null; }
+}
+
+/** Записать героя мира. Пишет только комната. */
+export function saveWorldCharacter(address, data, name) {
+  const level = цел(data && data.player && data.player.level, 1, 60, 1);
+  const deepest = цел(data && data.player && data.player.deepest, 0, 9999, 0);
+  const text = JSON.stringify(data);
+  if (text.length > 512 * 1024) return { ok: false, why: 'слепок слишком велик' };
+  q(`INSERT INTO characters (address, name, level, deepest, updated, data, world)
+     VALUES (?, ?, ?, ?, ?, '{}', ?)
+     ON CONFLICT(address) DO UPDATE SET
+       name = excluded.name, level = excluded.level,
+       deepest = MAX(characters.deepest, excluded.deepest),
+       updated = excluded.updated, world = excluded.world`)
+    .run(address, String(name || '').slice(0, 24), level, deepest, Date.now(), text);
+  return { ok: true, level, deepest };
+}
+
 export function saveCharacter(address, data, name) {
   // Границы здесь не украшение. Число больше 2^53 sqlite примет, а при чтении
   // node:sqlite бросит RangeError — и одна такая строка отравляет всё, что её
@@ -99,14 +142,14 @@ export function saveCharacter(address, data, name) {
   const deepest = цел(data && data.player && data.player.deepest, 0, 9999, 0);
   const text = JSON.stringify(data);
   if (text.length > 512 * 1024) return { ok: false, why: 'слепок слишком велик' };
+  // Уровень и глубину из копии клиента на доску не пускаем: доска — про общий
+  // мир, а копию присылает клиент. Колонки трогает только герой мира.
   q(`INSERT INTO characters (address, name, level, deepest, updated, data)
-     VALUES (?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, 1, 0, ?, ?)
      ON CONFLICT(address) DO UPDATE SET
-       name = excluded.name, level = excluded.level,
-       deepest = MAX(characters.deepest, excluded.deepest),
-       updated = excluded.updated, data = excluded.data`)
-    .run(address, String(name || '').slice(0, 24), level, deepest, Date.now(), text);
-  return { ok: true, level, deepest };
+       name = excluded.name, updated = excluded.updated, data = excluded.data`)
+    .run(address, String(name || '').slice(0, 24), Date.now(), text);
+  return { ok: true, level, deepest, saved: 'копия одиночной игры' };
 }
 
 /** Таблица глубины — то, ради чего в Бездну возвращаются. */
@@ -114,7 +157,7 @@ export function topDepth(n = 20) {
   // Старые строки могли лечь до проверки границ — одна такая не должна ронять
   // доску целиком.
   try {
-    return q('SELECT address, name, level, deepest FROM characters WHERE deepest > 0 ORDER BY deepest DESC, level DESC LIMIT ?')
+    return q('SELECT address, name, level, deepest FROM characters WHERE deepest > 0 AND world IS NOT NULL ORDER BY deepest DESC, level DESC LIMIT ?')
       .all(Math.min(100, Math.max(1, n | 0)));
   } catch (e) {
     console.error('доска глубины: битая строка в базе —', e.message);

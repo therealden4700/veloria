@@ -24,14 +24,15 @@ import { World } from './world.js';
 import { BIOMES } from '../src/world/biomes.js';
 import { FLOOR_MODS } from '../src/systems/dungeon_mods.js';
 import { issueNonce, buildMessage, verifySignature, newSession, readSession, stats as authStats } from './auth.js';
-import { openDb, touchAccount, loadCharacter, saveCharacter, topDepth, dbStats } from './db.js';
+import { openDb, touchAccount, loadCharacter, saveCharacter, loadWorldCharacter, saveWorldCharacter, topDepth, dbStats } from './db.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PORT = Number(process.env.PORT || 8123);
 const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
 const PING_MS = 5000;         // как часто щупаем живых
-const DEAD_MS = 15000;        // молчит дольше — отключаем
+const DEAD_MS = 15000;
+const SAVE_MS = 8000;        // как часто комната пишет персонажей в базу        // молчит дольше — отключаем
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -76,11 +77,14 @@ class Room {
       joinedAt: Date.now(),
       lastSeen: Date.now(),
     };
-    // персонаж берётся из базы по адресу сессии, а не из слов клиента
-    const character = p.address ? loadCharacter(p.address) : null;
+    // Герой берётся из базы по адресу сессии — и не любой, а тот, которого
+    // ведёт сам мир. Копию из одиночной игры сюда не пускаем: её прислал
+    // клиент, и в ней можно попросить что угодно. Кто в мир ещё не входил,
+    // начинает в нём заново.
+    const character = p.address ? loadWorldCharacter(p.address) : null;
     p.ent = this.world.addPlayer({
       pid: p.pid, name: p.name, address: p.address,
-      look: hello && hello.look, character: character ? character.data : null,
+      look: hello && hello.look, character,
     });
     // Запись игрока — ПОСЛЕДНИМ действием. Раньше она стояла до чтения из базы,
     // и исключение оставляло в комнате призрака: он попадал в размер и в
@@ -100,10 +104,29 @@ class Room {
   remove(connId) {
     const p = this.players.get(connId);
     if (!p) return;
+    this.записать(p);                 // уходит — сохраняем то, что насчитала комната
     this.players.delete(connId);
     this.world.removePlayer(p.pid);
     this.stats.left++;
     this.broadcast({ t: 'leave', pid: p.pid });
+  }
+
+  /**
+   * Записать персонажа таким, каким его насчитала комната.
+   *
+   * Это и есть перенос прогресса на сервер: раньше в базу ложился слепок от
+   * клиента, и попросить можно было что угодно. Теперь золото, опыт, уровень и
+   * рюкзак меняются только здесь — боем, добычей и поднятием, — и отсюда же
+   * уезжают в базу. Гостю писать некуда: у него нет адреса.
+   */
+  записать(p) {
+    if (!p || !p.address || !p.ent || !p.ent.toJSON) return;
+    try {
+      const data = { player: p.ent.toJSON(), quests: p.quests || null, ver: 1 };
+      saveWorldCharacter(p.address, data, p.name);
+    } catch (e) {
+      console.error('не записался персонаж', p.address, '—', e.message);
+    }
   }
 
   onMessage(p, msg) {
@@ -139,14 +162,37 @@ class Room {
       if (now - p.lastSeen > DEAD_MS) { try { p.conn.close(1001, 'молчит'); } catch { /* уже нет */ } this.remove(cid); }
     }
     if (!this.players.size) return;
+
+    // Пишем не каждый такт: база не выдержит двадцати записей в секунду на
+    // игрока, а терять больше нескольких секунд игры нельзя.
+    if (this.world.dirty && now - (this.lastSave || 0) > SAVE_MS) {
+      this.lastSave = now;
+      this.world.dirty = false;
+      for (const p of this.players.values()) this.записать(p);
+    }
+
     const s = this.world.snapshot();
+    // Своё состояние — каждому своё. В общем снимке его быть не должно: чужое
+    // золото никого не касается, а рассылать всем всё — лишний вес. Клиент
+    // ведёт свои числа сам, и без этого они разошлись бы с миром: считает-то
+    // теперь комната.
+    if (this.tick % 4 === 0) {
+      for (const p of this.players.values()) {
+        const e = p.ent;
+        if (!e) continue;
+        this.sendTo(p, {
+          t: 'me', gold: Math.round(e.gold || 0), xp: Math.round(e.xp || 0),
+          lvl: e.level, pts: e.statPoints || 0, bag: (e.inventory || []).length,
+        });
+      }
+    }
     // `ev` — что случилось за такт: попадания, промахи, смерти. Клиент играет
     // по ним зрелище. Раньше рассылка перечисляла поля поимённо и новое просто
     // не доехало: снимок его нёс, а до клиента он не добирался.
     // Снимок помечен комнатой. Без этого клиент применял к новой зоне то, что
     // уже летело из старой: чужой список хоронил всё население разом, а чужое
     // событие `kill` выдавало добычу за убийство в другом месте.
-    this.broadcast({ t: 'snap', room: this.id, tick: this.tick, now, players: s.players, enemies: s.enemies, shots: s.shots, ev: s.ev });
+    this.broadcast({ t: 'snap', room: this.id, tick: this.tick, now, players: s.players, enemies: s.enemies, shots: s.shots, loot: s.loot, ev: s.ev });
   }
 
   sendTo(p, obj) {
@@ -218,6 +264,15 @@ async function routeApi(req, res, path) {
     const sess = readSession(b && b.token);
     if (!sess) { json(res, 401, { ok: false, why: 'сессия неизвестна' }); return true; }
     if (sess.guest) { json(res, 200, { ok: true, guest: true, saved: false }); return true; }
+
+    // Это резервная копия ОДИНОЧНОЙ игры, и только она.
+    //
+    // Пока прогресс считал клиент, слепок отсюда был единственным способом его
+    // сохранить — и заодно способом попросить что угодно: настоящая учётка
+    // положила легендарку с атакой 9999 и девять миллионов золота, а сервер
+    // вернул их при следующем входе. Теперь у адреса два героя. Этот — копия,
+    // чтобы не потерять нажитое без сети вместе с кэшем браузера. В общий мир
+    // он не входит: там герой свой, и считает его комната.
     const r = saveCharacter(sess.address, b.data, b.name);
     json(res, r.ok ? 200 : 400, r);
     return true;
@@ -422,6 +477,7 @@ attachWebSocket(http, (conn) => {
       return;
     }
     if (msg.t === 'travel') { переехать(msg.at || { kind: 'city' }); return; }
+    if (msg.t === 'pickup') { мояКомната.world.pickup(player.pid, msg.lid); return; }
     мояКомната.onMessage(player, msg);
   };
   conn.onclose = () => { if (player && мояКомната) { мояКомната.remove(conn.id); sweepRooms(); } };
