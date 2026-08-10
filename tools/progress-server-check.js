@@ -67,8 +67,9 @@ async function вКомнату(token, at) {
     c.ws.addEventListener('close', (e) => fail(new Error(`комната закрыла связь: ${e.code} ${e.reason}`)));
     c.ws.addEventListener('message', (m) => {
       const msg = JSON.parse(m.data);
+      if (msg.t === 'snap') { c.snaps.push(msg); if (c.snaps.length > 30) c.snaps.shift(); for (const e of msg.ev || []) c.events.push(e); return; }
+      (c.пришло ||= []).push(msg);
       if (msg.t === 'welcome') { c.pid = msg.pid; c.welcome = msg; done(); }
-      else if (msg.t === 'snap') { c.snaps.push(msg); if (c.snaps.length > 30) c.snaps.shift(); for (const e of msg.ev || []) c.events.push(e); }
     });
     setTimeout(() => fail(new Error('нет welcome за 5 с')), 5000);
   });
@@ -113,7 +114,11 @@ await wait(1200);
 const герой = я(c1);
 проверить('выпрошенный уровень в мир не вошёл', герой && герой.lvl <= 1, герой ? `ур ${герой.lvl}` : 'нет героя', 'слепок клиента стал героем мира');
 проверить('выпрошенное здоровье в мир не вошло', герой && герой.hp < 300, герой ? `${герой.hp} hp` : '—', 'характеристики взяты из слепка');
-проверить('выпрошенное оружие в мир не вошло', герой && (герой.look.weaponTier | 0) === 0, герой ? `ранг ${герой.look.weaponTier}` : '—', 'вещь из слепка надета в мире');
+// Внешность в снимке больше не ездит — она приходит один раз сообщением
+// «кто». Ищем её там.
+const себя = (c1.пришло || []).filter((m) => m.t === 'кто').flatMap((m) => m.players || []).find((p) => p.pid === c1.pid);
+const ранг = себя && себя.look ? (себя.look.weaponTier | 0) : 0;
+проверить('выпрошенное оружие в мир не вошло', ранг === 0, `ранг ${ранг}`, 'вещь из слепка надета в мире');
 c1.ws.close();
 await wait(300);
 

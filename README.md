@@ -2165,6 +2165,66 @@ bot that never fought, not about the game. Measured across thirty runs, the real
 first kill lands at 21–30 seconds, once at 39. After separating the verdict from
 the observation: 0 red in 40 runs.
 
+### A city with other people in it
+
+Other heroes were already drawn, and the world still felt empty: no name, no
+level, no way to say a word. And underneath, one snapshot went out to everyone
+whole.
+
+**Measured first, and it was quadratic.** Each new player lands in everyone
+else's snapshot:
+
+| players | bytes/snapshot | outbound | per player |
+|---|---|---|---|
+| 5 | 1007 | 0.75 Mbit/s | 19 KB/s |
+| 20 | 3594 | 10.9 Mbit/s | 70 KB/s |
+| 50 | 8756 | 67 Mbit/s | 172 KB/s |
+
+172 KB/s to a phone is ten megabytes a minute. Then a breakdown of where those
+bytes go: of 8878 bytes at fifty players, `look` was 3550 and the name another
+940. **Half the traffic was things that never change**, sent twenty times a
+second.
+
+So: identity is sent once (`кто`), when a player first enters your view; the
+snapshot carries only what moves. Area of interest on top — 420 px, one and a
+half screens — and a cap of 24 players per snapshot, because the city is smaller
+than two view radii and a crowd in the market square is a real thing that AoI
+alone cannot fix.
+
+| 50 players | before | after |
+|---|---|---|
+| scattered | 134 KB/s | **42 KB/s** |
+| crowded in one spot | 181 KB/s | **45 KB/s** |
+
+Four times lighter, and a crowd no longer costs more than a spread-out world.
+
+Above another hero there is now a name, a level, and a health bar — the bar only
+when they are hurt, because over full health it is just clutter. `T` opens a
+line; what you say hangs over your head for five seconds and is heard within
+320 px. Length is capped at 120 characters and one line per 1.2 s: a message goes
+out to everyone nearby, which makes it a ready-made way to flood a neighbour's
+connection. And a room takes 50 people — the number that was measured, not
+guessed — with a clear refusal past that instead of silence.
+
+**Two stands were lying, both in the same direction — green while measuring
+nothing.**
+
+- `ws-load` sent `hello` with no token. Since the day tokens became mandatory the
+  room had been closing every one of its fifty connections, the stand received
+  0 snapshots out of 8000, and it exited 0 regardless. A permanently green check
+  that measures nothing is worse than a red one: nobody even looks at it.
+- Its bots also sent `{x, y}` instead of the step list, so none of them ever
+  moved — all fifty stood on the spawn point. The first "areas of interest
+  changed nothing" measurement was that: everyone was inside everyone's radius by
+  construction. Both are the mistakes this file already records for
+  `world-check`, made again in a different file.
+
+[`tools/city-shared-check.js`](tools/city-shared-check.js) guards the visible
+half: identity arrives separately and carries name, level and look; the snapshot
+has neither name nor look but does have health; speech reaches a neighbour;
+too-frequent, too-long and empty lines are refused; the room cap holds and says
+why.
+
 ### A room per biome
 
 There was one room and it was the city forever. That is what kept co-op locked

@@ -10,6 +10,8 @@ const N = Number(process.argv[2] || 50);
 const SECONDS = Number(process.argv[3] || 10);
 const PORT = Number(process.argv[4] || 8123);
 const URL_ = `ws://localhost:${PORT}/`;
+// «толпа» — все стоят в одной точке (площадь в городе); иначе расходятся.
+const РАЗБРЕСТИСЬ = process.argv[5] !== 'толпа';
 
 if (typeof WebSocket === 'undefined') {
   console.error('в этом Node нет встроенного WebSocket — нужен Node 22 и новее');
@@ -17,11 +19,25 @@ if (typeof WebSocket === 'undefined') {
 }
 
 const rtt = [];
+// Токен нужен так же, как настоящему клиенту. Без него комната закрывает
+// связь кодом 1008 — и стенд, который слал `hello` без токена, тихо получал
+// ноль снимков из восьми тысяч и всё равно выходил с нулём. Зелёный стенд,
+// который ничего не мерит, хуже красного: к красному хотя бы приглядываются.
+async function токен() {
+  const r = await fetch(`http://localhost:${PORT}/auth/verify`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ guest: true }),
+  });
+  const j = await r.json();
+  if (!j.token) throw new Error('комната не выдала токен: ' + JSON.stringify(j));
+  return j.token;
+}
+
 const clients = [];
-let connected = 0, failed = 0, snaps = 0, gaps = 0;
+let connected = 0, failed = 0, snaps = 0, gaps = 0, байт = 0;
 const t0 = Date.now();
 
-function spawn(i) {
+function spawn(i, token) {
   return new Promise((done) => {
     const ws = new WebSocket(URL_);
     const c = { ws, pid: null, lastTick: 0, connectedAt: 0 };
@@ -31,11 +47,13 @@ function spawn(i) {
     ws.onopen = () => {
       c.connectedAt = Date.now() - t0;
       connected++;
-      ws.send(JSON.stringify({ t: 'hello', name: 'бот-' + i, address: null }));
+      ws.send(JSON.stringify({ t: 'hello', token, name: 'бот-' + i }));
       finish();
     };
     ws.onerror = () => { failed++; finish(); };
+    ws.onclose = (e) => { if (!c.закрыт) c.закрыт = (e && e.code) + ' ' + ((e && e.reason) || ''); finish(); };
     ws.onmessage = (ev) => {
+      байт += (typeof ev.data === 'string' ? ev.data.length : 0);
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       if (m.t === 'welcome') c.pid = m.pid;
       else if (m.t === 'snap') {
@@ -53,18 +71,30 @@ function spawn(i) {
 const q = (arr, p) => (arr.length ? arr.slice().sort((a, b) => a - b)[Math.min(arr.length - 1, Math.floor(arr.length * p))] : -1);
 
 (async () => {
-  for (let i = 0; i < N; i++) clients.push(await spawn(i));
+  // Каждому свой токен: гостевой вход выдаёт сессию без вопросов, а один токен
+  // на всех — это один и тот же игрок, и комната имеет право так не считать.
+  for (let i = 0; i < N; i++) clients.push(await spawn(i, await токен()));
   const connMs = Date.now() - t0;
   console.log(`подключено ${connected} из ${N}${failed ? `, отказов ${failed}` : ''}, за ${connMs} мс`);
 
-  // шлём ввод как настоящий клиент — 20 раз в секунду — и щупаем отклик
+  // Шлём ввод как настоящий клиент: список отыгранных ШАГОВ, а не координату.
+  // Комната принимает только шаги — так работает защита от ускорителей, — и
+  // стенд, слоавший `{x, y}`, не двигал ботов вовсе: все пятьдесят стояли в
+  // точке входа. Замер «области интереса ничего не дали» был про это.
+  //
+  // Каждый идёт в свою сторону: полсотни человек в одной точке — не тот мир,
+  // ради которого пишут области интереса. Толпу меряем отдельно.
   let step = 0;
+  let было = Date.now();
   const send = setInterval(() => {
     step++;
-    for (const c of clients) {
+    const now = Date.now(), dt = Math.min(0.1, (now - было) / 1000);
+    было = now;
+    for (let i = 0; i < clients.length; i++) {
+      const c = clients[i];
       if (c.ws.readyState !== 1) continue;
-      const a = step / 20 + c.connectedAt;
-      c.ws.send(JSON.stringify({ t: 'input', x: 520 + Math.cos(a) * 60, y: 512 + Math.sin(a) * 60, f: a % 6.28 }));
+      const a = РАЗБРЕСТИСЬ ? (i / clients.length) * Math.PI * 2 : step / 20 + c.connectedAt;
+      c.ws.send(JSON.stringify({ t: 'input', s: [[Math.cos(a), Math.sin(a), dt]], f: a }));
       if (step % 20 === 0) c.ws.send(JSON.stringify({ t: 'ping', c: Date.now() }));
     }
   }, 50);
@@ -76,6 +106,13 @@ const q = (arr, p) => (arr.length ? arr.slice().sort((a, b) => a - b)[Math.min(a
   const expect = connected * SECONDS * 20;
   console.log(`живых к концу: ${live} из ${connected}`);
   console.log(`снимков получено: ${snaps} из ~${expect} ожидаемых (${((snaps / expect) * 100).toFixed(0)}%), разрывов нумерации: ${gaps}`);
+  // Вес рассылки — то, во что упирается «все видят всех»: снимок уходит
+  // каждому, и в нём каждый.
+  const наСнимок = snaps ? байт / snaps : 0;
+  console.log(`вес: ${(байт / 1048576).toFixed(1)} МБ за ${SECONDS} с, ` +
+              `${Math.round(наСнимок)} байт на снимок, ` +
+              `${((байт / SECONDS / 131072)).toFixed(2)} Мбит/с на всех, ` +
+              `${((байт / SECONDS / connected / 1024)).toFixed(1)} КБ/с одному`);
   console.log(`отклик: медиана ${q(rtt, 0.5)} мс, 95-й ${q(rtt, 0.95)} мс, худший ${Math.max(...rtt, -1)} мс, замеров ${rtt.length}`);
 
   const health = await fetch(`http://localhost:${PORT}/health`).then((r) => r.json()).catch(() => null);
@@ -83,6 +120,22 @@ const q = (arr, p) => (arr.length ? arr.slice().sort((a, b) => a - b)[Math.min(a
     console.log(`сервер: игроков ${health.players}, тактов ${health.tick}, память ${health.rss} МБ, ` +
                 `принято ${health.stats.in}, отправлено ${health.stats.out}, пик ${health.stats.maxPlayers}`);
   }
+  const беды = [];
+  if (!connected) беды.push('ни одно соединение не открылось');
+  if (!snaps) беды.push('снимков не пришло вовсе — комната молчит или закрыла связь');
+  else if (snaps < expect * 0.5) беды.push(`снимков ${((snaps / expect) * 100).toFixed(0)}% от ожидаемых — комната не успевает`);
+  if (live < connected * 0.9) {
+    const почему = [...new Set(clients.map((c) => c.закрыт).filter(Boolean))];
+    беды.push(`выжило ${live} из ${connected}${почему.length ? ' (' + почему.join('; ') + ')' : ''}`);
+  }
   for (const c of clients) { try { c.ws.close(); } catch { /* уже закрыт */ } }
-  setTimeout(() => process.exit(0), 300);
+  console.log('');
+  if (беды.length) {
+    console.log(`найдено: ${беды.length}`);
+    for (const b of беды) console.log('  ' + b);
+    setTimeout(() => process.exit(1), 300);
+  } else {
+    console.log('ПРОБЛЕМ НЕ НАЙДЕНО');
+    setTimeout(() => process.exit(0), 300);
+  }
 })();

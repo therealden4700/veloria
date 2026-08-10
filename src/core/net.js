@@ -80,6 +80,11 @@ export class Net {
           this.clockOffset = m.now - Date.now();
           if (this.onWelcome) this.onWelcome(m);
           done(m);
+        } else if (m.t === 'сказано') {
+          if (this.onSay) this.onSay(m);
+        } else if (m.t === 'кто') {
+          // Имя и внешность приходят один раз: в снимке их больше нет.
+          for (const к of m.players || []) (this.люди ||= new Map()).set(к.pid, к);
         } else if (m.t === 'журнал') {
           this.quests = m;
           if (this.onQuests) this.onQuests(m);
@@ -129,6 +134,12 @@ export class Net {
     try { this.ws.send(JSON.stringify(msg)); this.stats.sent++; return true; } catch { return false; }
   }
 
+  /** Сказать вслух. Услышат те, кто рядом; решает комната. */
+  say(text) {
+    if (!this.online || !this.ws) return false;
+    try { this.ws.send(JSON.stringify({ t: 'say', text })); return true; } catch { return false; }
+  }
+
   /** Поднять лежащее: решает комната, мы только просим. */
   pickup(lid) {
     if (!this.online || !this.ws) return;
@@ -143,6 +154,7 @@ export class Net {
     // Очередь событий чистилась не здесь, и лесное попадание отыгрывалось в
     // болоте — на существе с тем же номером, но другом.
     this._events = [];
+    this.люди = new Map();
     // До нового `welcome` мы не знаем, в какой мы комнате: всё, что прилетит,
     // относится к прежней.
     this.room = null;
@@ -291,8 +303,9 @@ export class Net {
     for (const pb of b.players) {
       if (pb.pid === this.pid) continue;
       const pa = a.players.find((x) => x.pid === pb.pid) || pb;
+      const кто = (this.люди && this.люди.get(pb.pid)) || {};
       out.push({
-        pid: pb.pid, name: pb.name, look: pb.look, hp: pb.hp,
+        pid: pb.pid, name: кто.name, look: кто.look, lvl: кто.lvl, hp: pb.hp, mhp: pb.mhp,
         x: pa.x + (pb.x - pa.x) * t,
         y: pa.y + (pb.y - pa.y) * t,
         facing: angleLerp(pa.f, pb.f, t),

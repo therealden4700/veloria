@@ -221,6 +221,7 @@ export class Game {
     }
     // Комната шлёт `welcome` и при переезде — тем же путём принимаем её сид.
     net.onBag = (m) => this.applyBag(m);
+    net.onSay = (m) => this.услышал(m);
     net.onQuests = (m) => this.applyQuests(m);
     net.onQuest = (m) => this.дошлоЗадание(m);
     net.onDeal = (m) => this.дошлаСделка(m);
@@ -1496,6 +1497,24 @@ export class Game {
     this.quests.complete(q, this);
   }
 
+  /**
+   * Сказанное вслух.
+   *
+   * Реплика вешается на говорящего и гаснет сама. Своя — на себя: без этого
+   * непонятно, ушло ли сказанное вообще.
+   */
+  услышал(m) {
+    if (!m.ok) { audio.play('deny'); this.toast(m.why || 'не сказалось', UI.textDim, 1.5); return; }
+    const до = this.time + 5;
+    if (m.pid === net.pid) { this.свояРеплика = { text: m.text, до }; }
+    else {
+      const о = (this._others || []).find((x) => x.pid === m.pid);
+      (this._реплики ||= new Map()).set(m.pid, { text: m.text, до });
+      if (о) { о.реплика = m.text; о.репликаДо = до; }
+    }
+    audio.play('ui', 0.7);
+  }
+
   /** Журнал, каким его ведёт мир. Свой ход клиент в общем мире не считает. */
   applyQuests(m) {
     if (!net.online || !m || !m.quests) return;
@@ -1871,6 +1890,13 @@ export class Game {
     // лавке клиент показывал 80 золота, мир знал про 44.
     this.applyMe();
 
+    // Разговор: «T» начинает строку, Enter отправляет, Esc бросает. Пока
+    // печатают, клавиши в игру не идут — это делает сам `input`.
+    if (net.online && !paused && !input.набор && input.consume('say')) {
+      input.набор = { text: '' };
+      input.onSay = (текст) => { if (текст && текст.trim()) net.say(текст); };
+    }
+
     // ── сеть: ввод туда, сверка обратно
     //
     // Своего героя двигает по-прежнему клиент — иначе каждое нажатие ждало бы
@@ -1886,6 +1912,15 @@ export class Game {
       net.sendInput(dt, ax.x, ax.y, p.facing || 0);
       net.reconcile(this.zone, p, p.moveSpeed);
       this._others = net.others();
+      // Реплики живут своей жизнью: список соседей пересобирается каждый кадр,
+      // а сказанное должно висеть пять секунд.
+      if (this._реплики) {
+        for (const о of this._others) {
+          const р = this._реплики.get(о.pid);
+          if (р && this.time < р.до) { о.реплика = р.text; о.репликаДо = р.до; }
+          else if (р) this._реплики.delete(о.pid);
+        }
+      }
     } else if (this._others && this._others.length) {
       this._others = [];
     }
@@ -2058,8 +2093,35 @@ export class Game {
     const x = Math.round(o.x - view.x - sp.w / 2);
     const y = Math.round(o.y - view.y - sp.ground);
     g.drawImage(c, x, y);
-    text(g, o.name, Math.round(o.x - view.x), y - 8,
+    const cx = Math.round(o.x - view.x);
+
+    // Полоса здоровья соседа: без неё непонятно, идёт он в бой или уходит из
+    // него. Показываем только раненых — над полным здоровьем полоска только
+    // мусорит.
+    if (o.hp !== undefined && o.mhp && o.hp < o.mhp) {
+      const w = 20, доля = Math.max(0, Math.min(1, o.hp / o.mhp));
+      g.fillStyle = 'rgba(4,3,10,0.75)';
+      g.fillRect(cx - w / 2 - 1, y - 15, w + 2, 4);
+      g.fillStyle = доля > 0.5 ? '#6fdc8c' : доля > 0.25 ? '#f0c05a' : '#e0484f';
+      g.fillRect(cx - w / 2, y - 14, Math.round(w * доля), 2);
+    }
+
+    // Имя и уровень: в общем мире надо понимать, кто перед тобой и стоит ли
+    // звать его в Пролом.
+    const подпись = o.lvl ? `${o.name || '?'} · ${o.lvl}` : (o.name || '');
+    text(g, подпись, cx, y - 8,
          { size: 7, align: 'center', color: '#c9a6ff', outline: 'rgba(4,3,10,0.9)' });
+
+    // Сказанное висит над головой: отдельного окна разговора нет, и это
+    // нарочно — мир маленький, а реплика на месте видна тому, кому она.
+    if (o.реплика && this.time < o.репликаДо) {
+      const w = Math.max(28, o.реплика.length * 4.2);
+      g.fillStyle = 'rgba(8,6,18,0.82)';
+      g.fillRect(cx - w / 2, y - 30, w, 11);
+      g.fillStyle = 'rgba(201,166,255,0.35)';
+      g.fillRect(cx - w / 2, y - 30, w, 1);
+      text(g, o.реплика, cx, y - 22, { size: 7, align: 'center', color: '#e8e0ff' });
+    }
   }
 
   drawHazards(g, view) {
@@ -2288,6 +2350,19 @@ export class Game {
     this.drawHazards(g, view);
     this.drawShafts(g, view);
     this.drawSlashes(g, view);
+    // Своя реплика — над своим героем: без неё непонятно, ушло ли сказанное.
+    if (this.свояРеплика && this.time < this.свояРеплика.до) {
+      const p = this.player;
+      const cx = Math.round(p.x - view.x), cy = Math.round(p.y - view.y);
+      const т = this.свояРеплика.text;
+      const w = Math.max(28, т.length * 4.2);
+      g.fillStyle = 'rgba(8,6,18,0.82)';
+      g.fillRect(cx - w / 2, cy - 52, w, 11);
+      g.fillStyle = 'rgba(255,214,106,0.4)';
+      g.fillRect(cx - w / 2, cy - 52, w, 1);
+      text(g, т, cx, cy - 44, { size: 7, align: 'center', color: '#ffe9b0' });
+    }
+
     for (const pr of this.projectiles) pr.draw(g, view);
     // Чужие снаряды в общем мире считает комната — своих врагов клиент не
     // обновляет и стрел не порождает. Рисуем прямо по снимку: без этого игрок
@@ -2331,6 +2406,22 @@ export class Game {
     const u = beginUI() || g;
     if (!this.menus.blocking || this.menus.mode === 'dialogue') this.hud.draw(u, this);
     this.menus.draw(u);
+
+    // Строка разговора: пока её печатают, она внизу экрана. Рисуем на слое
+    // интерфейса — здесь настоящее разрешение, и текст читается.
+    if (input.набор) {
+      const W = u.canvas.width, H = u.canvas.height;
+      const h = Math.round(H * 0.045), y = H - h - Math.round(H * 0.06);
+      u.fillStyle = 'rgba(8,6,18,0.86)';
+      u.fillRect(0, y, W, h);
+      u.fillStyle = 'rgba(201,166,255,0.5)';
+      u.fillRect(0, y, W, 2);
+      text(u, 'Сказать: ' + input.набор.text + (Math.floor(this.time * 2) % 2 ? '|' : ''),
+           Math.round(W * 0.02), y + h * 0.66,
+           { size: Math.round(h * 0.5), color: '#e8e0ff' });
+      text(u, 'Enter — сказать, Esc — отменить', W - Math.round(W * 0.02), y + h * 0.66,
+           { size: Math.round(h * 0.36), align: 'right', color: 'rgba(201,166,255,0.6)' });
+    }
 
     // ── затемнение перехода
     if (this.transition) {

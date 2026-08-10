@@ -17,6 +17,7 @@ const MAP = {
   quests:  ['KeyU'],
   map:     ['KeyM'],
   pause:   ['Escape'],
+  say:     ['KeyT'],           // сказать вслух: реплика висит над головой
   profiler:['F3', 'Backquote'],   // профайлер кадра — F3 или тильда
   confirm: ['Enter', 'Space'],
   cancel:  ['Escape'],
@@ -39,6 +40,8 @@ class Input {
     // на экране.
     this.stick = { x: 0, y: 0, active: false };
     this.touch = false;          // хоть раз касались — значит, играют пальцем
+    this.набор = null;           // строка, которую сейчас печатают
+    this.onSay = null;
   }
 
   attach(canvas, view) {
@@ -46,6 +49,16 @@ class Input {
     this.view = view;
 
     addEventListener('keydown', (e) => {
+      // Набор строки. Пока он идёт, клавиши в игру не попадают вовсе: иначе
+      // слово «дай» увело бы героя вниз и махнуло мечом.
+      if (this.набор) {
+        e.preventDefault();
+        if (e.key === 'Enter') { const t = this.набор.text; this.набор = null; if (this.onSay) this.onSay(t); return; }
+        if (e.key === 'Escape') { this.набор = null; return; }
+        if (e.key === 'Backspace') { this.набор.text = this.набор.text.slice(0, -1); return; }
+        if (e.key.length === 1 && this.набор.text.length < 120) this.набор.text += e.key;
+        return;
+      }
       if (e.repeat) return;
       const acts = REVERSE[e.code];
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Slash'].includes(e.code)) e.preventDefault();

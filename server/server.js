@@ -34,6 +34,12 @@ const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
 const PING_MS = 5000;         // как часто щупаем живых
 const DEAD_MS = 15000;
+// Разговор: как часто можно говорить и как далеко слышно.
+// Сколько человек пускаем в одну комнату. Замер: 50 в городе — 45 КБ/с
+// каждому, такт ровный, память 99 МБ. Выше не мерили — значит и не пускаем.
+const КОМНАТА_ПОТОЛОК = Number(process.env.ROOM_MAX) || 50;
+const SAY_MS = 1200;
+const SAY_R = 320;
 const SAVE_MS = 8000;        // как часто комната пишет персонажей в базу
 
 /**
@@ -146,6 +152,7 @@ class Room {
     this.world.removePlayer(p.pid);
     this.stats.left++;
     this.broadcast({ t: 'leave', pid: p.pid });
+    for (const o of this.players.values()) if (o.знакомы) o.знакомы.delete(p.pid);
   }
 
   /**
@@ -155,6 +162,34 @@ class Room {
    * причиной отказа — иначе он не сможет сказать игроку, чего не хватило, — и
    * свежий рюкзак, если что-то поменялось.
    */
+  /**
+   * Сказать вслух.
+   *
+   * Отдельного окна разговора нет: реплика висит над головой и гаснет. Мир
+   * маленький, и сказанное на месте видно тому, кому оно.
+   *
+   * Проверяем то же, что и везде: длину и частоту. Без потолка одно сообщение
+   * рассылается всем в области интереса двадцать раз в секунду — это готовый
+   * способ забить канал соседям.
+   */
+  сказать(p, текст) {
+    const t = String(текст || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!t) return;
+    const now = Date.now();
+    if (now - (p.сказалВ || 0) < SAY_MS) {
+      this.sendTo(p, { t: 'сказано', ok: false, why: 'слишком часто' });
+      return;
+    }
+    p.сказалВ = now;
+    if (!p.ent) return;
+    // Слышат только те, кто рядом: кричать через весь город незачем.
+    for (const o of this.players.values()) {
+      if (!o.ent) continue;
+      if (o !== p && (o.ent.x - p.ent.x) ** 2 + (o.ent.y - p.ent.y) ** 2 > SAY_R * SAY_R) continue;
+      this.sendTo(o, { t: 'сказано', ok: true, pid: p.pid, name: p.name, text: t });
+    }
+  }
+
   /**
    * Взять или сдать задание.
    *
@@ -263,7 +298,7 @@ class Room {
       for (const p of this.players.values()) this.записать(p);
     }
 
-    const s = this.world.snapshot();
+
     // Своё состояние — каждому своё. В общем снимке его быть не должно: чужое
     // золото никого не касается, а рассылать всем всё — лишний вес. Клиент
     // ведёт свои числа сам, и без этого они разошлись бы с миром: считает-то
@@ -295,13 +330,37 @@ class Room {
       }
       this.world.bagChanged = false;
     }
+    // Снимок теперь у каждого свой: в него попадает только то, что рядом.
+    // Одна рассылка на всех обходилась в 67 Мбит/с при пятидесяти игроках и
+    // росла квадратом — каждый новый попадал в снимок каждого.
+    //
     // `ev` — что случилось за такт: попадания, промахи, смерти. Клиент играет
-    // по ним зрелище. Раньше рассылка перечисляла поля поимённо и новое просто
-    // не доехало: снимок его нёс, а до клиента он не добирался.
+    // по ним зрелище. События общие: их мало, и пропустить своё убийство
+    // из-за расстояния нельзя. Забираем их один раз, иначе первый же игрок
+    // выгребет очередь, а остальные не увидят ничего.
+    //
     // Снимок помечен комнатой. Без этого клиент применял к новой зоне то, что
     // уже летело из старой: чужой список хоронил всё население разом, а чужое
     // событие `kill` выдавало добычу за убийство в другом месте.
-    this.broadcast({ t: 'snap', room: this.id, tick: this.tick, now, players: s.players, enemies: s.enemies, shots: s.shots, loot: s.loot, ev: s.ev });
+    const ev = this.world.takeEvents();
+    for (const p of this.players.values()) {
+      const s = this.world.snapshot(p.ent);
+      // Кого этот игрок ещё не знает — представляем. Имя и внешность не
+      // меняются, и место им не в каждом снимке, а в одном сообщении.
+      const знакомы = p.знакомы || (p.знакомы = new Set());
+      const новые = [];
+      for (const о of s.players) {
+        if (знакомы.has(о.pid)) continue;
+        знакомы.add(о.pid);
+        const к = this.world.кто(о.pid);
+        if (к) новые.push(к);
+      }
+      if (новые.length) this.sendTo(p, { t: 'кто', players: новые });
+      this.sendTo(p, {
+        t: 'snap', room: this.id, tick: this.tick, now,
+        players: s.players, enemies: s.enemies, shots: s.shots, loot: s.loot, ev,
+      });
+    }
   }
 
   sendTo(p, obj) {
@@ -537,6 +596,8 @@ const http = createServer(async (req, res) => {
   serveStatic(req, res);
 });
 
+const sendJson = (conn, obj) => { try { conn.send(JSON.stringify(obj)); } catch { /* уже нет */ } };
+
 attachWebSocket(http, (conn) => {
   let player = null;
   let мояКомната = null;
@@ -552,6 +613,14 @@ attachWebSocket(http, (conn) => {
     // доставке, и клиент не получал ни welcome, ни закрытия.
     const цель = roomFor(dest);
     if (!цель) { conn.close(1008, 'нет такого места'); return; }
+    // Потолок на комнату. Замер: полсотни в городе — 45 КБ/с каждому и такт в
+    // норме; дальше начинается неизвестность, а узнавать её на живых игроках
+    // незачем. Кто не влез — получает внятный отказ, а не молчание.
+    if (цель !== мояКомната && цель.size >= КОМНАТА_ПОТОЛОК) {
+      sendJson(conn, { t: 'полно', room: цель.id, limit: КОМНАТА_ПОТОЛОК });
+      if (!player) conn.close(1013, 'в мире сейчас людно');
+      return;
+    }
     if (цель === мояКомната) return;
     const прежняя = мояКомната;
     if (player && прежняя) {
@@ -602,6 +671,7 @@ attachWebSocket(http, (conn) => {
     // Торговля и кузня. Клиент присылает намерение, комната отвечает «да» или
     // «нет» с причиной — и, если да, сама меняет золото и рюкзак.
     if (msg.t === 'quest') { мояКомната.заданиe(player, msg); return; }
+    if (msg.t === 'say') { мояКомната.сказать(player, msg.text); return; }
     if (msg.t === 'shop' || msg.t === 'buy' || msg.t === 'sell' || msg.t === 'craft'
         || msg.t === 'salvage' || msg.t === 'reforge' || msg.t === 'sharpen' || msg.t === 'fuse') {
       мояКомната.торг(player, msg);
