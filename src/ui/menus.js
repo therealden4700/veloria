@@ -1249,6 +1249,9 @@ export class Menus {
     }
 
     const all = recipesFor(this.craftCat, this.craftSub);
+    // Помечаем каждый рецепт его местом в общем списке: в общем мире куёт
+    // комната, и назвать рецепт она должна тем же способом, что и мы.
+    all.forEach((r, i) => { r.cat = this.craftCat; r.sub = this.craftSub; r.idx = i; });
     const list = all.filter((r) => r.lvl <= p.level + 4);
     const rowH = 22;
     const maxRows = Math.floor((py + ph - 22 - listTop) / rowH);

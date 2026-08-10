@@ -220,6 +220,9 @@ export class Game {
       if (this.zone) this.enterZone(this.zone.kind === 'city' ? this.getCity() : this.getBiome(this.zone.biomeId));
     }
     // Комната шлёт `welcome` и при переезде — тем же путём принимаем её сид.
+    net.onBag = (m) => this.applyBag(m);
+    net.onDeal = (m) => this.дошлаСделка(m);
+    net.onShop = (m) => { if (this.menus.shop && this.menus.shop.npcId === m.npc) this.menus.shop.stock = (m.stock || []).map(reviveItem).filter(Boolean); };
     net.onWelcome = (msg) => {
       if (!msg.world || msg.world.seed === undefined || msg.world.seed === this.worldSeed) return;
       this.worldSeed = msg.world.seed;
@@ -268,12 +271,30 @@ export class Game {
    */
   applyMe() {
     const m = net.me;
-    if (!m || !this.serverRunsCombat) return;
+    // Не `serverRunsCombat`: город в него не входит, а торгуют именно там —
+    // и золото у клиента расходилось с миром на всю покупку.
+    if (!m || !net.online) return;
     const p = this.player;
     if (Number.isFinite(m.gold)) p.gold = m.gold;
     if (Number.isFinite(m.xp)) p.xp = m.xp;
     if (Number.isFinite(m.pts)) p.statPoints = m.pts;
     if (Number.isFinite(m.lvl) && m.lvl > p.level) { p.level = m.lvl; p.refreshSprites(); }
+  }
+
+  /**
+   * Принять рюкзак от мира.
+   *
+   * В общем мире вещи считает комната: она их роняет, отдаёт, кует и точит.
+   * Свой список клиент здесь не ведёт, а показывает присланный — иначе они
+   * разойдутся на первой же покупке.
+   */
+  applyBag(m) {
+    if (!net.online || !m) return;
+    const p = this.player;
+    p.inventory = (m.inv || []).map(reviveItem).filter(Boolean);
+    for (const слот in m.eq || {}) p.equipment[слот] = reviveItem(m.eq[слот]);
+    p._setsKey = null;
+    p.refreshSprites();
   }
 
   applyEnemySnapshot() {
@@ -1307,6 +1328,7 @@ export class Game {
 
   craft(recipe) {
     const p = this.player;
+    if (net.online) { net.торг({ t: 'craft', cat: recipe.cat, sub: recipe.sub || null, idx: recipe.idx }); return; }
     if (!canAfford(p, recipe)) { audio.play('deny'); this.toast('Не хватает материалов', UI.danger); return; }
     if (p.level < recipe.lvl) { audio.play('deny'); this.toast(`Нужен уровень ${recipe.lvl}`, UI.danger); return; }
     if (p.inventory.length >= p.invSize) { audio.play('deny'); this.toast('Рюкзак полон', UI.danger); return; }
@@ -1324,6 +1346,7 @@ export class Game {
   /** Разбор: предмет в материалы. Единственный способ добыть руду пачками. */
   salvage(item) {
     const p = this.player;
+    if (net.online) { net.торг({ t: 'salvage', id: item.id }); return; }
     const y = salvageYield(item);
     p.removeItem(item, item.count || 1);
     p.gold += y.gold;
@@ -1336,6 +1359,7 @@ export class Game {
   /** Переплавка: та же вещь, но аффиксы бросаются заново. */
   reforge(item) {
     const p = this.player;
+    if (net.online) { net.торг({ t: 'reforge', id: item.id }); return; }
     const cost = reforgeCost(item);
     if (p.gold < cost.gold) { audio.play('deny'); this.toast('Не хватает золота', UI.danger); return; }
     for (const k in cost.mats) if (p.countMaterial(k) < cost.mats[k]) { audio.play('deny'); this.toast('Не хватает материалов', UI.danger); return; }
@@ -1376,6 +1400,14 @@ export class Game {
   sharpen(picked) {
     const p = this.player;
     const base = p.equipment.weapon;
+    if (net.online) {
+      // Топливо называем номерами: годность каждого проверит комната — у неё
+      // настоящий рюкзак. И бросок «удалось или нет» тоже её: иначе удачу
+      // объявлял бы тот, кому она выгодна.
+      const fuel = (picked || sharpenFuel(p, base) || []).slice(0, 3).map((i) => i.id);
+      net.торг({ t: 'sharpen', fuel });
+      return;
+    }
     if (!base) { audio.play('deny'); this.toast('Надень оружие', UI.danger); return; }
     if ((base.sharp || 0) >= SHARP_MAX) { audio.play('deny'); this.toast('Дальше точить некуда', UI.textDim); return; }
     const годно = (i) => i && i.kind === 'weapon' && i.rarity === base.rarity && i !== base && p.inventory.includes(i);
@@ -1424,6 +1456,7 @@ export class Game {
   /** Три одинаковые руны + золото → одна руна следующего ранга. */
   fuseRunes(group) {
     const p = this.player;
+    if (net.online) { net.торг({ t: 'fuse', ids: group.items.slice(0, 3).map((i) => i.id) }); return; }
     if (group.items.length < 3) { audio.play('deny'); return; }
     const next = RARITY_ORDER[RARITY_ORDER.indexOf(group.rarity) + 1];
     if (!next) { audio.play('deny'); return; }
@@ -1440,8 +1473,56 @@ export class Game {
     this.save();
   }
 
+  /**
+   * Ответ мира на намерение из лавки или кузни.
+   *
+   * Само действие уже случилось (или не случилось) на сервере — здесь только
+   * то, что видит и слышит игрок. Отказ обязателен: без причины игрок не
+   * поймёт, чего не хватило.
+   */
+  дошлаСделка(m) {
+    if (!m.ok) { audio.play('deny'); this.toast(m.why || 'не вышло', UI.danger, 2.5); return; }
+    const p = this.player;
+    const цвет = (RARITY[m.rarity] || RARITY.common).color;
+    switch (m.act) {
+      case 'buy': audio.play('buy'); this.toast('Куплено: ' + t(m.name), цвет); break;
+      case 'sell': audio.play('coin'); this.toast('+' + m.gold + ' золота', UI.gold); break;
+      case 'salvage': audio.play('salvage'); this.toast('Разобрано: ' + t(m.name) + (m.gold ? `, +${m.gold} зол.` : ''), UI.good, 3); break;
+      case 'craft':
+        audio.play('forge');
+        this.hud.showBanner('ВЫКОВАНО', t(m.name), цвет);
+        this.particles.burst(p.x, p.y - 12, 20, { color: '#ffd66a', color2: '#fff6c8', speed: 60, life: 0.6, size: 2, glow: 7 });
+        this.quests.onCraft(this);
+        break;
+      case 'reforge': audio.play('forge'); this.hud.showBanner('ПЕРЕПЛАВЛЕНО', t(m.name), цвет); break;
+      case 'fuse': audio.play('fuse'); this.hud.showBanner('СЛИЯНИЕ', t(m.name), цвет); break;
+      case 'sharpen':
+        if (m.what === 'заточено') {
+          audio.play('sharpen');
+          this.hud.showBanner('ЗАТОЧКА УДАЛАСЬ', t(m.name), '#ffd54a');
+          this.particles.burst(p.x, p.y - 14, 40, { color: '#ffd54a', color2: '#ffffff', speed: 110, life: 1, size: 2, glow: 9, vz: 60, g: 90 });
+          this.shake.add(4, 0.3);
+          if (m.gained && m.gained.length) { audio.play('quest'); this.toast('Веха: ' + m.gained.join(', '), '#ffd54a', 4); }
+        } else if (m.what === 'откат') {
+          audio.play('sharpenFail');
+          this.hud.showBanner('ЗАТОЧКА СОРВАЛАСЬ', 'откат к вехе +' + (m.sharp || 0), '#e0a03d');
+          this.shake.add(5, 0.35);
+        } else {
+          audio.play('shatterItem');
+          this.hud.showBanner('МЕТАЛЛ НЕ ВЫДЕРЖАЛ', 'оружие рассыпалось', '#e0484f');
+          this.shake.add(8, 0.5);
+        }
+        break;
+      default: break;
+    }
+  }
+
   buyItem(shop, it, price) {
     const p = this.player;
+    // В общем мире торгует комната: у неё ассортимент, золото и рюкзак.
+    // Клиент называет только прилавок и место в нём — цену он мог бы и
+    // придумать.
+    if (net.online) { net.торг({ t: 'buy', npc: shop.npcId, slot: it.slot }); return; }
     if (p.gold < price) { audio.play('deny'); this.toast('Не хватает золота', UI.danger); return; }
     if (p.inventory.length >= p.invSize && !it.stack) { audio.play('deny'); this.toast('Рюкзак полон', UI.danger); return; }
     p.gold -= price;
@@ -1455,6 +1536,7 @@ export class Game {
 
   sellItem(it, price) {
     const p = this.player;
+    if (net.online) { net.торг({ t: 'sell', id: it.id }); return; }
     p.gold += price;
     p.removeItem(it, it.count || 1);
     audio.play('coin');
@@ -1622,10 +1704,19 @@ export class Game {
     if (npc.shop) {
       options.push({
         label: 'Торговля', action: () => {
-          const stock = rollShopStock(npc.shop, p.level, (this.shopSeed + p.level * 31 + npc.id.length) | 0);
           // заголовок хранится как есть: переводить надо до подъёма регистра,
           // иначе в словаре пришлось бы держать ещё и версию капсом
-          this.menus.openMode('shop', { title: npc.name, stock, npc });
+          //
+          // В общем мире ассортимент — состояние комнаты: там купленное
+          // исчезает с прилавка, и второй раз то же самое не купить. Открываем
+          // пустую лавку и просим список; он придёт сообщением `shop`.
+          if (net.online) {
+            this.menus.openMode('shop', { title: npc.name, stock: [], npc, npcId: npc.shop });
+            net.торг({ t: 'shop', npc: npc.shop });
+            return;
+          }
+          const stock = rollShopStock(npc.shop, p.level, (this.shopSeed + p.level * 31 + npc.id.length) | 0);
+          this.menus.openMode('shop', { title: npc.name, stock, npc, npcId: npc.shop });
         },
       });
     }
@@ -1735,22 +1826,34 @@ export class Game {
     const paused = this.menus.blocking;
     const p = this.player;
 
+    // Свои числа сверяем с миром всегда, пока мы в нём: и в городе — торгуют
+    // именно там, а бой комната считает только вне города, — и при открытом
+    // окне. Под паузой сверка замирала ровно тогда, когда числа тратят: в
+    // лавке клиент показывал 80 золота, мир знал про 44.
+    this.applyMe();
+
+    // ── сеть: ввод туда, сверка обратно
+    //
+    // Своего героя двигает по-прежнему клиент — иначе каждое нажатие ждало бы
+    // круга до сервера. Сюда уходит намерение, а `reconcile` подтягивает героя
+    // к тому, где его видит комната, переигрывая неучтённые шаги.
+    //
+    // Не под паузой. Раньше блок стоял внутри неё, и открытое окно означало
+    // молчание: комната отключает молчунов через пятнадцать секунд, то есть
+    // достаточно было задержаться в лавке или в журнале, чтобы вылететь из
+    // мира. Под паузой герой стоит — значит и шаг уходит нулевой.
+    if (net.online && this.zone) {
+      const ax = paused ? { x: 0, y: 0 } : input.axis();
+      net.sendInput(dt, ax.x, ax.y, p.facing || 0);
+      net.reconcile(this.zone, p, p.moveSpeed);
+      this._others = net.others();
+    } else if (this._others && this._others.length) {
+      this._others = [];
+    }
+
     if (!paused && !this.transition) {
       p.update(dt, this);
 
-      // ── сеть: ввод туда, сверка обратно
-      //
-      // Своего героя двигает по-прежнему клиент — иначе каждое нажатие ждало бы
-      // круга до сервера. Сюда уходит намерение, а `reconcile` подтягивает
-      // героя к тому, где его видит комната, переигрывая неучтённые шаги.
-      if (net.online && this.zone) {
-        const ax = input.axis();
-        net.sendInput(dt, ax.x, ax.y, p.facing || 0);
-        net.reconcile(this.zone, p, p.moveSpeed);
-        this._others = net.others();
-      } else if (this._others && this._others.length) {
-        this._others = [];
-      }
 
       // ── враги: свои или комнатные
       //
@@ -1762,7 +1865,6 @@ export class Game {
       // сущности, а подтягиваем положение и здоровье к тому, что видит сервер:
       // спрайты, сортировка по глубине и вся отрисовка работают как прежде.
       if (this.serverRunsCombat) {
-        this.applyMe();
         this.applyEnemySnapshot();
         // `deadT` копит только `Enemy.update`, которого здесь нет, — и труп
         // навсегда оставался с нулём: непрозрачный, в полный рост, от живого

@@ -19,6 +19,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachWebSocket } from './ws.js';
 import { World } from './world.js';
+import { Market } from './market.js';
 // Списки мест и модификаторов берём из самих правил: перечислять их здесь
 // значило бы завести вторую копию, которая однажды разойдётся.
 import { BIOMES } from '../src/world/biomes.js';
@@ -32,7 +33,18 @@ const TICK_HZ = 20;
 const TICK_MS = 1000 / TICK_HZ;
 const PING_MS = 5000;         // как часто щупаем живых
 const DEAD_MS = 15000;
-const SAVE_MS = 8000;        // как часто комната пишет персонажей в базу        // молчит дольше — отключаем
+const SAVE_MS = 8000;        // как часто комната пишет персонажей в базу
+
+/**
+ * Вещь для отправки: без иконки.
+ *
+ * Иконка — нарисованный холст, и в нём круговая ссылка на свой контекст.
+ * `JSON.stringify` на таком бросает, а бросок внутри доставки глохнет: клиент
+ * не получает ни ответа, ни ошибки — просто тишина. Один раз это уже стоило
+ * получаса: ассортимент лавки «не приходил», и в логе сервера было пусто.
+ * Клиент рисует иконку сам — по виду, рангу и редкости.
+ */
+const безИконки = (i) => (i ? { ...i, icon: undefined } : null);        // молчит дольше — отключаем
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -55,6 +67,8 @@ class Room {
     // Общий спавн — город: там встречаются все, кто вошёл. Биомы и подземелья
     // станут отдельными комнатами на отряд, когда до них дойдёт очередь.
     this.world = new World(worldOpts || { kind: 'city', seed: 20260805 });
+    // Лавки и кузня общего мира: их считает комната, а не клиент.
+    this.market = new Market(20260805);
     this.players = new Map();     // conn.id → игрок
     this.tick = 0;
     this.lastStep = Date.now();
@@ -81,7 +95,12 @@ class Room {
     // ведёт сам мир. Копию из одиночной игры сюда не пускаем: её прислал
     // клиент, и в ней можно попросить что угодно. Кто в мир ещё не входил,
     // начинает в нём заново.
-    const character = p.address ? loadWorldCharacter(p.address) : null;
+    // У кого есть адрес — берём из базы. У гостя адреса нет, и записывать
+    // некуда; но терять его героя при каждом переезде нельзя: раньше прогресс
+    // вёл клиент и это не всплывало, а теперь ведёт комната. Между комнатами
+    // гостя переносит само соединение — и это состояние сервера, а не слова
+    // клиента, так что верить ему можно.
+    const character = p.address ? loadWorldCharacter(p.address) : (hello && hello._герой) || null;
     p.ent = this.world.addPlayer({
       pid: p.pid, name: p.name, address: p.address,
       look: hello && hello.look, character,
@@ -97,6 +116,7 @@ class Room {
       t: 'welcome', pid: p.pid, room: this.id, tickHz: TICK_HZ, now: Date.now(),
       world: this.world.describe(),
     });
+    p.bagDirty = true;              // при входе клиент должен увидеть свой рюкзак
     this.broadcast({ t: 'join', player: shortOf(p) }, p);
     return p;
   }
@@ -105,10 +125,48 @@ class Room {
     const p = this.players.get(connId);
     if (!p) return;
     this.записать(p);                 // уходит — сохраняем то, что насчитала комната
+    // И отдаём соединению слепок: по нему гость восстановится в следующей
+    // комнате. Для учётки это лишнее — её ведёт база, — но и не мешает.
+    if (p.ent && p.ent.toJSON) { try { p.наПамять = { player: p.ent.toJSON() }; } catch { /* не беда */ } }
     this.players.delete(connId);
     this.world.removePlayer(p.pid);
     this.stats.left++;
     this.broadcast({ t: 'leave', pid: p.pid });
+  }
+
+  /**
+   * Намерение из лавки или кузни.
+   *
+   * Всё, что меняет золото и вещи, проходит здесь. Клиенту уходит ответ с
+   * причиной отказа — иначе он не сможет сказать игроку, чего не хватило, — и
+   * свежий рюкзак, если что-то поменялось.
+   */
+  торг(p, msg) {
+    const e = p.ent;
+    if (!e) return;
+    // Торгуют и куют в городе: там стоят лавки и кузня. Клиент открывает их
+    // только рядом с жителем, но верить в это нельзя — окно рисует он.
+    if (this.world.kind !== 'city') {
+      this.sendTo(p, { t: 'деньги', act: msg.t, ok: false, why: 'здесь нет ни лавки, ни кузни' });
+      return;
+    }
+    const m = this.market;
+    let r;
+    switch (msg.t) {
+      case 'shop':
+        this.sendTo(p, { t: 'shop', npc: msg.npc, stock: m.ассортимент(e, String(msg.npc || 'smith')).map(безИконки) });
+        return;
+      case 'buy':     r = m.buy(e, String(msg.npc || 'smith'), msg.slot); break;
+      case 'sell':    r = m.sell(e, msg.id); break;
+      case 'craft':   r = m.craft(e, String(msg.cat || ''), msg.sub || null, msg.idx); break;
+      case 'salvage': r = m.salvage(e, msg.id); break;
+      case 'reforge': r = m.reforge(e, msg.id); break;
+      case 'sharpen': r = m.sharpen(e, msg.fuel); break;
+      case 'fuse':    r = m.fuse(e, msg.ids); break;
+      default: return;
+    }
+    if (r && r.ok) { this.world.dirty = true; p.bagDirty = true; }
+    this.sendTo(p, { t: 'деньги', act: msg.t, ...r });
   }
 
   /**
@@ -184,7 +242,18 @@ class Room {
           t: 'me', gold: Math.round(e.gold || 0), xp: Math.round(e.xp || 0),
           lvl: e.level, pts: e.statPoints || 0, bag: (e.inventory || []).length,
         });
+        // Рюкзак — не каждый такт: он тяжёлый. Шлём, когда что-то изменилось,
+        // и это единственная правда о вещах в общем мире: клиент их не считает.
+        if (p.bagDirty || this.world.bagChanged) {
+          p.bagDirty = false;
+          this.sendTo(p, {
+            t: 'bag',
+            inv: (e.inventory || []).map(безИконки),
+            eq: Object.fromEntries(Object.entries(e.equipment || {}).map(([k, v]) => [k, безИконки(v)])),
+          });
+        }
       }
+      this.world.bagChanged = false;
     }
     // `ev` — что случилось за такт: попадания, промахи, смерти. Клиент играет
     // по ним зрелище. Раньше рассылка перечисляла поля поимённо и новое просто
@@ -445,7 +514,12 @@ attachWebSocket(http, (conn) => {
     if (!цель) { conn.close(1008, 'нет такого места'); return; }
     if (цель === мояКомната) return;
     const прежняя = мояКомната;
-    if (player && прежняя) прежняя.remove(conn.id);
+    if (player && прежняя) {
+      прежняя.remove(conn.id);
+      // Слепок, оставленный уходящим, кладём в «привет»: с ним герой войдёт в
+      // новую комнату тем же, кем вышел из прежней.
+      if (player.наПамять) привет = { ...привет, _герой: player.наПамять };
+    }
     // Порядок важен: пока вход не удался, `мояКомната` не должна показывать на
     // новую — иначе следующий `hello` упрётся в «уже там» и не сделает ничего,
     // а клиент останется немым до таймаута.
@@ -478,6 +552,13 @@ attachWebSocket(http, (conn) => {
     }
     if (msg.t === 'travel') { переехать(msg.at || { kind: 'city' }); return; }
     if (msg.t === 'pickup') { мояКомната.world.pickup(player.pid, msg.lid); return; }
+    // Торговля и кузня. Клиент присылает намерение, комната отвечает «да» или
+    // «нет» с причиной — и, если да, сама меняет золото и рюкзак.
+    if (msg.t === 'shop' || msg.t === 'buy' || msg.t === 'sell' || msg.t === 'craft'
+        || msg.t === 'salvage' || msg.t === 'reforge' || msg.t === 'sharpen' || msg.t === 'fuse') {
+      мояКомната.торг(player, msg);
+      return;
+    }
     мояКомната.onMessage(player, msg);
   };
   conn.onclose = () => { if (player && мояКомната) { мояКомната.remove(conn.id); sweepRooms(); } };

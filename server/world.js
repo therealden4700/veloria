@@ -426,7 +426,13 @@ export class World {
     }
     this.loot.splice(i, 1);
     this.dirty = true;
-    this.events.push({ t: 'took', pid, lid: l.lid, gold: l.gold || 0, item: l.item || null });
+    this.bagChanged = true;      // комната пришлёт хозяину свежий рюкзак
+    // Иконка — нарисованный холст с круговой ссылкой на свой контекст.
+    // `JSON.stringify` на таком бросает, и падает не одно сообщение, а вся
+    // рассылка такта: снимка не получает никто в комнате. Клиент рисует иконку
+    // сам — по виду, рангу и редкости.
+    const вещь = l.item ? { ...l.item, icon: undefined } : null;
+    this.events.push({ t: 'took', pid, lid: l.lid, gold: l.gold || 0, item: вещь });
   }
 
   /**

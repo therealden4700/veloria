@@ -80,6 +80,13 @@ export class Net {
           this.clockOffset = m.now - Date.now();
           if (this.onWelcome) this.onWelcome(m);
           done(m);
+        } else if (m.t === 'bag') {
+          this.bag = m;
+          if (this.onBag) this.onBag(m);
+        } else if (m.t === 'shop') {
+          if (this.onShop) this.onShop(m);
+        } else if (m.t === 'деньги') {
+          if (this.onDeal) this.onDeal(m);
         } else if (m.t === 'me') {
           this.me = m;
           if (this.onMe) this.onMe(m);
@@ -106,6 +113,15 @@ export class Net {
   sendSwing(combo, facing) {
     if (!this.online || !this.ws) return;
     try { this.ws.send(JSON.stringify({ t: 'swing', combo, f: +facing.toFixed(2) })); this.stats.sent++; } catch { /* оборвалось — переживём */ }
+  }
+
+  /**
+   * Намерение из лавки или кузни. Решает комната: она знает золото, материалы
+   * и ассортимент, и она же меняет рюкзак.
+   */
+  торг(msg) {
+    if (!this.online || !this.ws) return false;
+    try { this.ws.send(JSON.stringify(msg)); this.stats.sent++; return true; } catch { return false; }
   }
 
   /** Поднять лежащее: решает комната, мы только просим. */

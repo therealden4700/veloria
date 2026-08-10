@@ -1763,10 +1763,68 @@ skipped.
 Verified in the browser end to end: kill, walk over the drop, and the client's
 numbers match the world's exactly — 47 gold and 15 experience on both sides.
 
-**What is still missing.** Buying, selling, forging and sharpening still happen
-on the client: in the shared world those change gold and items too, and the room
-does not see them yet. The single-player game is deliberately untouched — it must
-work without a network at all.
+### Shops and the forge belong to the room
+
+Moving progress to the server left one thing behind, and the measurement found
+it immediately: buying in the city changed only the client's copy. The client
+showed 4874 gold, the world knew about 40, and on the next login the purchase
+had never happened. The same held for forging, sharpening, salvaging and fusing
+— all of them move gold and items, and the room saw none of it.
+
+There is no second economy. Prices, recipes, sharpening odds and shop stock come
+from the same `systems/items.js` and `systems/craft.js` the single-player game
+computes with. The room adds exactly one thing: **checking**. The client sends an
+intent — "buy this", "forge that" — and whether it adds up against gold,
+materials, level and space in the bag is the server's call. Refusals come back
+with a reason, because a player who is refused has to know what was missing.
+
+Stock is the room's state, not the client's: otherwise "bought" could be declared
+about anything, any number of times. Sharpening's coin-flip is the room's too —
+otherwise success would be announced by the party who benefits from it. Trading
+requires being in the city, because that is where the merchants are; the client
+only opens those windows next to an NPC, but the window is drawn by the client.
+
+The bag itself is now the world's. It arrives whenever it changes, and the client
+shows what it was sent rather than keeping its own list — those two diverge on
+the very first purchase.
+
+**Three real defects came out of this, and none of them was about trade.**
+
+- **Icons were travelling over the network.** An icon is a drawn canvas with a
+  circular reference to its own context; `JSON.stringify` throws on it. Once that
+  was inside the broadcast, the failure was not one message but the whole tick —
+  nobody in the room got a snapshot. It cost half an hour the first time (the
+  shop list "did not arrive", and the server log was empty) and appeared twice
+  more from different places. The stand now scans every received message for an
+  icon.
+- **Any open window silenced the client.** The network block sat inside the
+  `paused` gate, so opening the inventory, the journal or a shop stopped input
+  from going out — and the room disconnects the silent after fifteen seconds.
+  Lingering in a shop meant being dropped from the world. Under pause the hero
+  stands still, so the step it sends is simply zero.
+- **A guest lost their hero on every trip.** No address means nothing to write to
+  the database, and each room built a fresh level-1 character. It never showed
+  before because progress was the client's. The connection carries the guest
+  between rooms now — server-produced state, never the client's word.
+
+[`tools/market-server-check.js`](tools/market-server-check.js) guards it as a
+dishonest client: it asks for a shop, tries to buy without gold and to buy what
+does not exist, trades in the middle of a forest, sells what it never had, forges
+a recipe that is not there, sharpens with fuel it does not own. The full circle —
+earn, buy, sell — runs over the real network too.
+
+**Two lessons about the stand itself.** "The bought item leaves the counter"
+passed with the rule deliberately broken: after a purchase there is no gold left,
+so the second attempt is refused for the wrong reason. It now looks at the
+counter instead of the wallet. And the happy paths moved in-process: proving a
+purchase over the network means earning first, and the bot earns blind — it
+failed to find anything to kill in one run out of several. A permanently
+sometimes-red check is worse than none, so the refusals stay on the wire and
+"bought, forged, sharpened" is measured against the room's rules directly.
+
+**What is still missing.** Quests are still the client's: their progress and
+rewards do not go through the room. The single-player game is deliberately
+untouched — it must work with no network at all.
 
 ### The client hands combat over
 
