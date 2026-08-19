@@ -6,6 +6,15 @@
 <meta name="author" content="therealden4700">
 <meta name="description" content="Veloria — 2D-пиксельная ARPG в браузере. Вся графика, звук и музыка рождаются кодом при загрузке.">
 <meta name="copyright" content="© 2026 therealden4700">
+<!-- Где стоит комната общего мира.
+     Пусто — комната там же, откуда пришла страница: так работает `node
+     server/server.js` на своей машине. Живая ссылка живёт на GitHub Pages, а это
+     статика: вебсокетов она не отдаёт. Чтобы страница с Pages нашла общий мир,
+     впишите сюда адрес сервера, например
+     <meta name="veloria-server" content="https://veloria.fly.dev">
+     Без адреса игра просто работает одиночно — это не поломка, а честный
+     запасной путь. -->
+<meta name="veloria-server" content="">
 <title>Veloria</title>
 <link rel="stylesheet" href="./styles.css">
 </head>

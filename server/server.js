@@ -26,7 +26,7 @@ import { QuestBook } from './quests.js';
 import { BIOMES } from '../src/world/biomes.js';
 import { FLOOR_MODS } from '../src/systems/dungeon_mods.js';
 import { issueNonce, buildMessage, verifySignature, newSession, readSession, stats as authStats } from './auth.js';
-import { openDb, touchAccount, loadCharacter, saveCharacter, loadWorldCharacter, saveWorldCharacter, topDepth, dbStats } from './db.js';
+import { openDb, touchAccount, loadCharacter, saveCharacter, loadWorldCharacter, saveWorldCharacter, topDepth, dbStats, closeDb } from './db.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PORT = Number(process.env.PORT || 8123);
@@ -41,6 +41,48 @@ const КОМНАТА_ПОТОЛОК = Number(process.env.ROOM_MAX) || 50;
 const SAY_MS = 1200;
 const SAY_R = 320;
 const SAVE_MS = 8000;        // как часто комната пишет персонажей в базу
+
+/**
+ * Кому позволено обращаться к комнате из браузера.
+ *
+ * Игра и комната теперь живут на разных адресах: страница — статика на GitHub
+ * Pages, комната — сервер где-то ещё. Браузер такие обращения без разрешения
+ * не пропускает, и разрешение надо назвать поимённо.
+ *
+ * Поимённо, а не «всем». Разрешить всех — значит позволить любому сайту
+ * открывать сокеты в комнату и держать в ней своих; это тот же класс, что и
+ * «клиент присылает свой рюкзак», только снаружи.
+ *
+ *   VELORIA_ORIGINS=https://therealden4700.github.io,https://veloria.example
+ *
+ * Свой же адрес разрешён всегда: когда игру отдаёт сам сервер игры, никакого
+ * чужого источника нет и настраивать нечего.
+ */
+const ИСТОЧНИКИ = new Set(
+  String(process.env.VELORIA_ORIGINS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean),
+);
+/** Пришло ли это из браузера с разрешённого адреса. */
+const свойИсточник = (origin) => !!origin && ИСТОЧНИКИ.has(origin);
+/**
+ * Можно ли пускать.
+ *
+ * Без заголовка `Origin` — можно: его не шлёт ни один стенд, ни `curl`, ни
+ * мобильная обёртка. Отрезать безымянных значило бы отрезать в первую очередь
+ * собственные проверки, а защиты не прибавить: `Origin` — это правило браузера
+ * для браузера, подделать его вне браузера может кто угодно.
+ */
+const пускать = (origin) => !origin || свойИсточник(origin);
+
+/** Заголовки разрешения. Ставим только названному адресу — и никогда `*`. */
+function разрешить(res, origin) {
+  if (!свойИсточник(origin)) return;
+  res.setHeader('access-control-allow-origin', origin);
+  res.setHeader('vary', 'Origin');
+  res.setHeader('access-control-allow-headers', 'content-type');
+  res.setHeader('access-control-allow-methods', 'POST, GET, OPTIONS');
+  res.setHeader('access-control-max-age', '86400');
+}
 
 /**
  * Вещь для отправки: без иконки.
@@ -397,13 +439,34 @@ const json = (res, code, obj) => {
 };
 
 async function routeApi(req, res, path) {
+  // Разрешение ставим до ответа: браузер смотрит на заголовки, а не на тело.
+  разрешить(res, req.headers.origin);
+
+  // Предполётный запрос. Браузер шлёт его сам перед всяким POST с телом JSON и
+  // без ответа на него дальше не идёт вовсе — то есть без этой ветки вход с
+  // чужого адреса не начинается, сколько бы ни было правильных заголовков
+  // ниже. Отвечаем только на свои пути и только знакомому источнику.
+  if (req.method === 'OPTIONS') {
+    if (!свойИсточник(req.headers.origin)) { res.writeHead(403).end(); return true; }
+    res.writeHead(204).end();
+    return true;
+  }
+
   if (path === '/auth/nonce' && req.method === 'POST') {
     const b = await readBody(req);
     const address = b && typeof b.address === 'string' ? b.address : '';
     const nonce = issueNonce(address);
     // Текст строит сервер, а не клиент: проверять он будет ровно эти байты, и
     // расхождение хоть в пробеле означало бы, что честная подпись не сходится.
-    const message = buildMessage(nonce, req.headers.host || 'veloria', new Date().toISOString());
+    //
+    // Домен в тексте — тот, что игрок видит в адресной строке, а не тот, где
+    // стоит комната. Игрок подтверждает вход на сайт, а не на машину, о которой
+    // ничего не знает. Берём его из `Origin`, и только когда он разрешён: иначе
+    // произвольный сайт диктовал бы, что покажет окно кошелька.
+    const домен = свойИсточник(req.headers.origin)
+      ? new URL(req.headers.origin).host
+      : (req.headers.host || 'veloria');
+    const message = buildMessage(nonce, домен, new Date().toISOString());
     json(res, 200, { nonce, message });
     return true;
   }
@@ -689,7 +752,7 @@ attachWebSocket(http, (conn) => {
   };
   conn.onclose = () => { if (player && мояКомната) { мояКомната.remove(conn.id); sweepRooms(); } };
   conn.onerror = () => { /* обрыв — обычное дело, закрытие придёт следом */ };
-});
+}, пускать);
 
 // такт комнаты
 const timer = setInterval(() => {
@@ -710,11 +773,35 @@ http.listen(PORT, () => {
   console.log(`такт ${TICK_HZ} Гц, состояние — /health`);
 });
 
+/**
+ * Остановка.
+ *
+ * Комната пишет персонажей раз в восемь секунд — значит при каждом обновлении
+ * сервера у всех, кто в мире, пропадало до восьми секунд игры: убитый босс,
+ * поднятая легендарка, сданное задание. На своей машине это незаметно, при
+ * публикации обновления идут регулярно, и терять на каждом по восемь секунд
+ * чужой игры нельзя.
+ *
+ * Поэтому: сначала записать всех, потом попрощаться, потом закрыть базу.
+ * `SIGTERM` — то, чем останавливает всякий хостер, и десять секунд на сборы у
+ * нас есть у любого.
+ */
+let уходим = false;
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
+    if (уходим) return;                 // второй сигнал не должен рвать запись
+    уходим = true;
     clearInterval(timer); clearInterval(beat);
-    for (const r of rooms.values()) for (const p of r.players.values()) { try { p.conn.close(1001, 'сервер остановлен'); } catch { /* всё равно уходим */ } }
+    let записано = 0;
+    for (const r of rooms.values()) {
+      for (const p of r.players.values()) {
+        try { r.записать(p); записано++; } catch { /* один битый не повод бросать остальных */ }
+        try { p.conn.close(1001, 'сервер остановлен'); } catch { /* всё равно уходим */ }
+      }
+    }
+    try { closeDb(); } catch { /* уже закрыта */ }
+    console.log(`остановка: записано персонажей ${записано}`);
     http.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 500);
+    setTimeout(() => process.exit(0), 1500);
   });
 }

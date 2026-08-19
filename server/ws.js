@@ -208,15 +208,27 @@ export class Conn {
 
 /**
  * Повесить приём WebSocket на обычный http-сервер.
- * `onConn(conn, req)` зовётся на каждое установленное соединение.
+ *
+ * @param {function} onConn — `onConn(conn, req)` на каждое установленное
+ *   соединение.
+ * @param {function} [пускать] — `пускать(origin)`: пускать ли просителя с этого
+ *   адреса. Правила CORS на рукопожатие вебсокета не распространяются вовсе —
+ *   браузер откроет сокет к кому угодно и заголовков разрешения спрашивать не
+ *   станет. Значит смотреть на `Origin` обязан сам сервер, иначе сокет комнаты
+ *   открывает любой сайт и держит в ней своих.
  */
-export function attachWebSocket(httpServer, onConn) {
+export function attachWebSocket(httpServer, onConn, пускать) {
   let seq = 0;
   httpServer.on('upgrade', (req, socket) => {
     const key = req.headers['sec-websocket-key'];
     const ver = req.headers['sec-websocket-version'];
     if (String(req.headers.upgrade || '').toLowerCase() !== 'websocket' || !key || ver !== '13') {
       socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (пускать && !пускать(req.headers.origin)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
     }

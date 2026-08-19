@@ -17,6 +17,7 @@ const shortenAddr = (a) => (a && a.length > 12 ? a.slice(0, 4) + '…' + a.slice
 import { net } from './core/net.js';
 import { swingHits, resolveHit, aoeTargets, lineTargets, skillRoll, hazardTargets, hazardHitsPlayer, boltSpec } from './systems/combat.js';
 import { getWallet, isSignedIn, getToken, isVerified, getCharacter, pushCharacter } from './core/wallet.js';
+import { serverWsUrl } from './core/server-url.js';
 import { bakeHero } from './art/sprites.js';
 import { PROPS, itemIcon } from './art/props.js';
 import { windAt } from './art/wind.js';
@@ -200,7 +201,10 @@ export class Game {
       weaponType: p.equipment.weapon ? (p.equipment.weapon.sub === 'dagger' ? 'sword' : p.equipment.weapon.sub) : 'sword',
       cape: p.level >= 10,
     };
-    const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/';
+    // Комната стоит там, где сказано, а не там, откуда пришла страница. Живая
+    // ссылка — статика на GitHub Pages, вебсокетов она не отдаёт; адрес комнаты
+    // называет мета-тег в index.html или довод `?server=` в ссылке.
+    const url = serverWsUrl();
     // В комнату входят по токену, а не по имени: токен выдают только против
     // проверенной подписи, поэтому чужим адресом назваться нельзя.
     const token = getToken();

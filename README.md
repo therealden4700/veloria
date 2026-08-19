@@ -61,10 +61,13 @@ apparatus rather than in the game. Each of those is written down too.
 ## Run it
 
 The quickest way is [the live build](https://therealden4700.github.io/veloria/) —
-it needs nothing installed. That page is single player: it is static files, so
-there is no room server behind it and the "shared city" button is not shown.
+it needs nothing installed. That page is single player until a room is named in
+its `<meta name="veloria-server">`: static hosting serves files and nothing else,
+so the shared world has to run somewhere with a process. Putting it there is
+[`DEPLOY.md`](DEPLOY.md) — no build step, no dependencies, one volume, three
+commands.
 
-For co-op, or to run it yourself:
+For the shared world, or to run it yourself:
 
 ```bash
 node server/server.js
@@ -2165,6 +2168,62 @@ through — "long until the first fight: Infinity seconds" is a statement about 
 bot that never fought, not about the game. Measured across thirty runs, the real
 first kill lands at 21–30 seconds, once at 39. After separating the verdict from
 the observation: 0 red in 40 runs.
+
+### The live link could never have reached the world
+
+Everything above assumes the shared world is reachable. It was not, and not
+because no server was running — because the client had no way to ask for one.
+
+The live link is GitHub Pages: static hosting, no WebSockets, ever. And the
+client only ever spoke to whoever served the page —
+`fetch('/auth/nonce')` by relative path, `new WebSocket(location.host)`. So the
+room had to be somewhere else, and the page could not name anywhere else. Two
+days of shared-world work existed for nobody.
+
+Three walls, measured before touching anything — 6 of 9 checks red:
+
+- **the page cannot say where the room is** — the address was hardcoded in three
+  places;
+- **a browser would refuse the answer anyway** — the preflight `OPTIONS` returned
+  404 and no permission header came back on anything;
+- **the socket let in whoever knocked** — no `Origin` check at all, so any page
+  on the internet could open sockets into the room and keep its own bots there.
+
+Now the address is named once, and three ways: `?server=` in the link beats a
+`<meta name="veloria-server">` in `index.html`, which beats the page's own
+origin. The last one is the old behaviour, so running `node server/server.js`
+locally works exactly as before. The link argument is treated as hostile input —
+`javascript:` and friends do not become an address, because a link that can
+redirect a player to a look-alike room is a phishing kit.
+
+The room now names permitted sites one by one from `VELORIA_ORIGINS` and never
+answers `*`. A wildcard would mean *any* page can drive the room on a player's
+behalf — the same class as "the client sends its own inventory", just from
+outside. A request with no `Origin` at all is still let through: no stand sends
+one, no `curl` sends one, and refusing them would cut off our own instruments
+while stopping nobody, since `Origin` is a rule browsers keep for browsers.
+
+One thing moved because of this: **the text a player signs names the site they
+can see, not the machine the room runs on.** Signing readable text is the whole
+defence against "just approve these bytes" — and the readable part has to be the
+thing in their address bar.
+
+Proven end to end in a real browser: the page served from `localhost:4173`, the
+room on `localhost:3000`, guest sign-in over CORS, socket up, hero walked from
+520,512 to 742,445 with the room reconciling every step, 254 packets, no console
+errors. Standing still does not drop you — the client keeps sending zero-length
+steps.
+
+[`tools/cross-origin-check.js`](tools/cross-origin-check.js) is 15 checks over
+all of it, and four mutations each turn red only their own: no preflight branch
+(1), wildcard permission (3), no socket `Origin` check (1), meta tag ignored (1).
+
+[`DEPLOY.md`](DEPLOY.md) is the rest: a Dockerfile with no build step and no
+dependencies, one volume for the database, the environment variables in one
+table, and three commands. Two things in it are worth knowing before going live —
+`SIGTERM` now writes every player before saying goodbye, because the room saves
+every eight seconds and a deploy used to cost everyone in the world up to eight
+seconds of play.
 
 ### Fighting together has to pay
 

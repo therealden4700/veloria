@@ -33,6 +33,9 @@
 // средства. Игрок должен видеть в окне кошелька, что он подтверждает вход в
 // Veloria на конкретном сайте, и ничего больше.
 
+// Комната может стоять не там, где страница: адрес решает `server-url`.
+import { apiUrl } from './server-url.js';
+
 const KEY = 'veloria.wallet.v1';
 const TTL_MS = 7 * 24 * 3600 * 1000;     // неделя, дальше просим войти заново
 
@@ -94,7 +97,7 @@ export const PHANTOM_URL = 'https://phantom.app/download';
  */
 async function askChallenge(address) {
   try {
-    const r = await fetch('/auth/nonce', {
+    const r = await fetch(apiUrl('/auth/nonce'), {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ address }),
     });
@@ -250,7 +253,7 @@ function makeLocalNonce() {
 
 async function postJson(path, body) {
   try {
-    const r = await fetch(path, {
+    const r = await fetch(apiUrl(path), {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
