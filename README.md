@@ -2018,7 +2018,8 @@ the client spawned the raiders itself. The room knew nothing about them, so they
 were absent from the snapshot — and the client buries everything missing from the
 snapshot, **with full loot and experience**. Free reward for a squad nobody saw.
 The rule is now simple and covers the whole class: in the shared world a kill
-pays out only when the room says who struck the last blow. Camps are the room's
+pays out only when the room says whom it counted in — see *Fighting together has
+to pay* below for who that turned out to be. Camps are the room's
 too, they re-arm after they are cleared, and they reuse their own slots in the
 list rather than claiming new ones every raid.
 
@@ -2164,6 +2165,119 @@ through — "long until the first fight: Infinity seconds" is a statement about 
 bot that never fought, not about the game. Measured across thirty runs, the real
 first kill lands at 21–30 seconds, once at 39. After separating the verdict from
 the observation: 0 red in 40 runs.
+
+### Fighting together has to pay
+
+One world means two people will eventually hit the same monster. Until now the
+answer to "who gets what" was the worst one available: `killEnemy(e, by)` handed
+everything to whoever landed the last blow, and no contribution was tracked
+anywhere in the codebase.
+
+**Measured with two real clients.** The first took a slime from 78 health down to
+26 — 52 points, two thirds of the work — then stopped. The second walked up, hit
+it three times, and took all of it:
+
+| | first (helped) | second (finished) |
+|---|---|---|
+| damage dealt | 52 of 78 | 26 of 78 |
+| experience | **+0** | +14 |
+| quest progress | **+0** | +1 |
+| loot | **none** | 2 drops |
+
+And the helper could *see* both of those drops lying on the ground, greyed out
+for a minute. That is not a balance quirk. It decides what a stranger is: at this
+rule another player in the shared world is a competitor, and the shared world
+works against itself.
+
+**The rule now.** Every hit is recorded against the enemy: who dealt it and when.
+Damage that arrives on its own — burn, poison, reactions, thorns — extends a
+share you already have but never opens one, because that damage is credited to
+whoever happens to be nearest when the tick lands, not to whoever set the fire.
+At death, a participant is anyone in the room whose damage is less than 30
+seconds old and reaches a twentieth of the enemy's health; the one who finished
+it is always on the list.
+
+The split runs along a line drawn by things this project already measured.
+
+**Experience and quest progress: full, to everyone.** Splitting would punish
+playing together — two people levelling side by side would go half as fast as two
+people ignoring each other. And the recorded pacing figure ("8–19 kills per
+level") does not shift by a hair: a shared kill is one kill each.
+
+**Gold: by share of damage.** One monster pays out one monster's worth of gold no
+matter how many people hit it, so the faucet stays exactly where the end-to-end
+economy sweep across levels 5–40 put it.
+
+**Items: a full roll each, for anyone who did a tenth of the work.** That is what
+grouping is paid in, and instanced loot means there is no pile to fight over. The
+threshold is the guard: without it a poke worth 5% of a guardian's health buys a
+complete set, and twenty accounts poking once turn one boss into twenty full
+sets — one biome's best gear, on demand, every three minutes.
+
+Measured over eight shared kills, one fighter contributing 6.3% and the other
+93.7%:
+
+| | small share | large share |
+|---|---|---|
+| experience | 66 | 66 |
+| gold | 9 | 137 |
+| items | 0 | 7 |
+
+Visibility now says exactly what pickability says: yours, or nobody's. It used to
+show everything and let you take almost none of it. The one-minute "then it's
+anyone's" rule went with it — with instanced loot it only ever meant "wait a
+minute and collect the other participants' piles too."
+
+**The counter-audit found the hole I had left open, and it was the same hole in a
+different disguise.** Trail damage — burn, poison, reactions, thorns — arrives
+with no attacker attached, so the room fell back on `this.player`, which is
+whichever player is *nearest* the creature. There is no distance limit on that.
+A lone player in a biome is the nearest player to all forty of its inhabitants,
+so every death that did not come from a swing — a burn tick, a bomber blowing
+itself up, its own shrapnel killing its packmates — named them the finisher and
+paid them in full. I had written the guard for exactly this case and put it in
+only one of the two places it was needed: it stopped trail damage from *opening*
+a share, and did nothing about the finisher slot. Now the finisher must be a real
+attacker with a recorded hit, and trail damage names nobody.
+
+The same pass turned up three defects older than this work: a guest could hand
+themselves any character by attaching it to their first `hello`; the guardian's
+respawn timer was stored under a slot number that does not exist in a freshly
+built room, so leaving for the city and coming back re-summoned it instantly; and
+restoring an ambush camp could leave a gap in the enemy list, which killed the
+room's tick outright on the next step.
+
+**The twelfth case of the instrument lying.** In this stand one bot waits while
+the other fights — and the room disconnects anyone silent for 15 seconds
+(`DEAD_MS`), while the wait runs closer to a minute. The waiting bot was thrown
+out, its snapshots stopped, and its position froze on the spawn point. What the
+stand printed was "0 swings in 25 seconds", which reads exactly like a broken
+sharing rule. It took a verbose trace showing the same coordinates sixteen times
+in a row to see that the bot had not been refused — it had been unplugged. A real
+client sends input every frame; the bots now send an empty one every three
+seconds.
+
+[`tools/together-check.js`](tools/together-check.js) has two halves, and the
+split is not tidiness. The network half stages the scene above with three real
+clients — one who helps, one who finishes, one who only stands there. The other
+half drives the room directly, because a death that is *not* a swing cannot be
+staged over a socket: a level-1 bot has neither a burning weapon nor a bomber to
+hand. The first version had only the network half, and the mutation that restored
+the nearest-player rule sailed through all ten of its checks.
+
+21 checks. Five mutations, each turning red the checks that belong to it:
+
+| break this | goes red |
+|---|---|
+| only the finisher counts | 3 |
+| the nearest player is the finisher | 4 |
+| full gold and items to everyone | 3 |
+| no presence required | 4 |
+| no participation threshold | 1 |
+
+The gold mutation needed eight kills to catch, not one. With one kill the check
+compared two random rolls and they happened to land the right way round — green
+while measuring nothing, again.
 
 ### A city with other people in it
 

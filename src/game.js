@@ -340,12 +340,24 @@ export class Game {
     this.playServerEvents();   // сначала события: там сказано, кто чей убийца
     for (const e of this.enemies) {
       if (!e || e.dead || живые.has(e.nid)) continue;
+      // Хороним только то, о смерти чего сказала комната.
+      //
+      // «Нет в снимке» смертью не считается: снимок обрезан по расстоянию (420
+      // px), и отойти от живого стража значило объявить его поверженным —
+      // с баннером, сменой музыки и открытым спуском. События `kill` приходят
+      // всем в комнате независимо от расстояния, так что пропустить своё
+      // убийство таким образом нельзя.
+      if (!this._убийцы || !this._убийцы.has(e.nid)) continue;
       // Награду даёт только слово комнаты. Просто «пропал из снимка» её не
       // даёт: пока клиент рождал засады сам, всё, чего комната не знала,
       // хоронилось здесь же — с полной добычей и опытом за отряд, которого
       // никто не видел.
-      const by = this._убийцы && this._убийцы.get(e.nid);
-      this.killEnemy(e, { чужой: by !== net.pid });
+      // «Своё» — это участие, а не последний удар. Комната считает вклад и
+      // присылает в `w` всех, кому засчитала: помогавший получает опыт, ход
+      // задания и свою добычу, даже если добил кто-то другой.
+      const уб = this._убийцы && this._убийцы.get(e.nid);
+      const моё = !!уб && (уб.by === net.pid || (уб.w || []).includes(net.pid));
+      this.killEnemy(e, { чужой: !моё });
       if (this._убийцы) this._убийцы.delete(e.nid);
     }
   }
@@ -360,8 +372,9 @@ export class Game {
   playServerEvents() {
     for (const ev of net.takeEvents()) {
       // Событие `kill` приходит раньше снимка, где враг уже исчез. Запоминаем
-      // убийцу — снимок сам по себе не знает, чья это была добыча.
-      if (ev.t === 'kill') { (this._убийцы || (this._убийцы = new Map())).set(ev.i, ev.by); continue; }
+      // событие целиком: снимок сам по себе не знает ни кто добил, ни кому
+      // комната засчитала участие.
+      if (ev.t === 'kill') { (this._убийцы || (this._убийцы = new Map())).set(ev.i, ev); continue; }
       const e = ev.i !== undefined ? this.enemyByNid(ev.i) : null;
       if (ev.t === 'hit' && e) {
         e.hurtT = 0.16;
@@ -926,9 +939,13 @@ export class Game {
 
   /**
    * @param {object} e
-   * @param {{чужой?: boolean}} [opts] — убил другой игрок: тело падает, но
-   *   добыча, опыт, счётчики заданий и пассивки на убийство остаются у него.
+   * @param {{чужой?: boolean}} [opts] — убили без нас: тело падает, но добыча,
+   *   опыт, счётчики заданий и пассивки на убийство достаются участникам боя.
    *   Без этого в общем мире каждый получал бы награду за всех.
+   *
+   *   «Без нас» — значит мы не били, а не «добил другой». Участие считает
+   *   комната и присылает списком в событии `kill`: помогавшему полагается
+   *   ровно то же, что добившему, иначе драться вместе невыгодно.
    */
   killEnemy(e, opts = {}) {
     e.dead = true;
@@ -971,7 +988,12 @@ export class Game {
     this.decals.push({ x: e.x, y: e.y, r: e.r * 0.9, a: 0.5, life: 24 });
 
     // опыт и добыча
-    p.gainXp(e.xpValue, this);
+    //
+    // В общем мире опыт начисляет комната и присылает в `me`. Считать его ещё и
+    // здесь — значит спорить с ней между её сообщениями: `applyMe` уровень
+    // только поднимает и никогда не опускает, так что расхождение осталось бы
+    // на экране до конца сеанса. Число над врагом — зрелище, оно остаётся.
+    if (!net.online) p.gainXp(e.xpValue, this);
     this.floats.add(e.x, e.y - e.spr.h - 4, `+${e.xpValue} опыта`, { color: '#8ff0b0', size: 8, vy: -18 });
     this.dropLoot(e);
     if (!net.online) this.quests.onKill(e.key, this);
@@ -1017,7 +1039,7 @@ export class Game {
     for (const [lid, t] of прошено) if (this.time - t > 1.5) прошено.delete(lid);
     if (p.dead) return;
     for (const l of this.loot) {
-      if (l.o !== null && l.o !== net.pid && l.m > 0) continue;   // ещё чужая
+      if (l.o !== null && l.o !== net.pid) continue;              // чужая
       if (dist(l.x, l.y, p.x, p.y - 4) > 22) continue;
       if (прошено.has(l.i)) continue;
       прошено.set(l.i, this.time);
@@ -2738,7 +2760,7 @@ export class Game {
       l = {
         x: l.x, y: l.y, z: 0, gold: l.g,
         item: l.k ? (l._и || (l._и = { kind: l.k, rarity: l.r || 'common', icon: itemIcon(l.k, null, 0, l.r || 'common') })) : null,
-        чужая: l.o !== null && l.o !== net.pid && l.m > 0,
+        чужая: l.o !== null && l.o !== net.pid,
       };
     }
     const x = Math.round(l.x - camX), y = Math.round(l.y - l.z - camY);
