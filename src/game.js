@@ -142,7 +142,7 @@ export class Game {
     this.player.addItem(makeRune('bolts', 'common', 1));
     this.player.addItem(makeConsumable('potionS', 3));
     this.player.gold = 60;
-    this.quests.refresh(this.player);
+    this.обновитьЖурнал();
     this.state = 'play';
     this.menus.close();
     this.enterZone(this.getCity(), null);
@@ -164,7 +164,7 @@ export class Game {
     this.zoneCache.clear();
     this.state = 'play';
     this.menus.close();
-    this.quests.refresh(this.player);
+    this.обновитьЖурнал();
     this.enterZone(this.getCity(), null);
     this.hud.showBanner('ВЕЛОРИЯ', 'с возвращением, искатель');
     // Если основной слот не прочитался и герой пришёл из резервной копии —
@@ -881,10 +881,8 @@ export class Game {
     } else {
       this.hud.showBanner('ВЕЛОРИЯ', 'безопасная зона');
     }
-    if (!net.online) {
-      if (zone.safe) this.quests.refresh(this.player);
-      this.quests.syncCollect(this.player);
-    }
+    if (zone.safe) this.обновитьЖурнал();
+    if (!net.online) this.quests.syncCollect(this.player);
   }
 
   // ════════════════════════════ физика и запросы
@@ -1649,6 +1647,23 @@ export class Game {
   }
 
   /** Журнал, каким его ведёт мир. Свой ход клиент в общем мире не считает. */
+  /**
+   * Обновить журнал — если он вообще наш.
+   *
+   * В общем мире журнал ведёт комната: она открывает задания по уровню, она же
+   * добирает контракты, и она присылает готовое. Клиенту здесь делать нечего.
+   *
+   * Правило стоит одно на все случаи нарочно. Сначала оно было расставлено по
+   * местам вызова, и двух из пяти не хватило: у капитана и на взятом уровне
+   * клиент открывал задания сам. Игрок видел «доступно» и получал красный отказ
+   * «нет такого задания» на «Принять». Пять охран в пяти местах — это четыре
+   * шанса забыть про пятое.
+   */
+  обновитьЖурнал(p = this.player) {
+    if (net.online) return;
+    this.quests.refresh(p);
+  }
+
   applyQuests(m) {
     if (!net.online || !m || !m.quests) return;
     this.quests.fromJSON(m.quests);
@@ -1744,7 +1759,7 @@ export class Game {
       color: '#8ff0b0', color2: '#ffffff', speed: 90, life: 0.9, size: 2, glow: 8, vz: 70, g: 120,
     });
     this.shake.add(3, 0.3);
-    this.quests.refresh(p);
+    this.обновитьЖурнал(p);
     this.save();
   }
 
@@ -1923,7 +1938,7 @@ export class Game {
       });
     }
     if (npc.quests) {
-      options.push({ label: 'Задания', action: () => { this.quests.refresh(p); this.menus.openJournal('quests'); } });
+      options.push({ label: 'Задания', action: () => { this.обновитьЖурнал(p); this.menus.openJournal('quests'); } });
     }
     if (npc.portalMaster) {
       options.push({ label: 'Открыть врата', action: () => this.menus.openMode('portal') });

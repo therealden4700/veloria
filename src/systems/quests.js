@@ -594,17 +594,52 @@ export class Quests {
     };
   }
 
+  /**
+   * Принять журнал целиком — и ничего не оставить от прежнего.
+   *
+   * Раньше здесь было только дополнение: записи с совпавшим номером
+   * обновлялись, а всё остальное оставалось как было. Для загрузки сохранения
+   * это сходило с рук, а в общем мире обернулось враньём на экране. Журнал
+   * одиночной игры въезжал в мир целиком: клиент показывал свои открытые
+   * задания и свои контракты, комната о них не знала, и «Принять» давало
+   * красный отказ на подсвеченное «доступно». Замер: 36 записей у клиента
+   * против 34 у комнаты, два контракта-призрака, и `refresh` открывал q2–q5,
+   * которые мир держал закрытыми.
+   *
+   * Присланное — вся правда, а не поправка к ней. `toJSON` перечисляет журнал
+   * целиком, поэтому и сохранение, и комната шлют полный состав: чего в нём
+   * нет, того нет и у нас.
+   */
   fromJSON(d) {
     if (!d) return;
     this.bountySeed = d.bountySeed || 1;
     this.completedIds = d.completedIds || [];
+
+    const записи = new Map((d.list || []).map((r) => [r.id, r]));
+    // Сюжетные задания живут всегда — они и есть игра. Не названные в присланном
+    // возвращаются к закрытым: раз мир о них не сказал, значит они закрыты.
+    const свежие = QUEST_LINE.map((шаблон) => {
+      const был = this.all.find((x) => x.id === шаблон.id);
+      const q = был && !был.bounty ? был : { ...шаблон, progress: 0, state: 'locked' };
+      const rec = записи.get(q.id);
+      q.state = rec ? rec.state : 'locked';
+      q.progress = rec ? (rec.progress || 0) : 0;
+      q.ready = rec ? rec.ready : false;
+      return q;
+    });
+    // Контракты — только названные. Они приходят вместе с описанием (`data`),
+    // потому что придумывает их тот, кто ведёт журнал.
     for (const rec of d.list || []) {
-      let q = this.all.find((x) => x.id === rec.id);
-      if (!q && rec.data) { q = { ...rec.data }; this.all.push(q); }
+      if (!rec.bounty && !rec.data) continue;
+      if (QUEST_LINE.some((x) => x.id === rec.id)) continue;
+      const прежний = this.all.find((x) => x.id === rec.id && x.bounty);
+      const q = rec.data ? { ...rec.data } : прежний;
       if (!q) continue;
       q.state = rec.state;
       q.progress = rec.progress || 0;
       q.ready = rec.ready;
+      свежие.push(q);
     }
+    this.all = свежие;
   }
 }
