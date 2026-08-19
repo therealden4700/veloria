@@ -15,7 +15,7 @@
 // объявить о чём угодно и сколько угодно раз.
 
 import {
-  makeItem, makeConsumable, makeMaterial, makeRune, rollShopStock, reviveItem, RARITY_ORDER, fuseCost,
+  makeItem, makeConsumable, makeMaterial, makeRune, rollShopStock, reviveItem, RARITY_ORDER, fuseCost, SHOPS,
 } from '../src/systems/items.js';
 import {
   recipesFor, canAfford, craftItem, salvageYield, reforgeCost,
@@ -48,6 +48,14 @@ export class Market {
    * не купить.
    */
   ассортимент(p, лавка) {
+    // Лавка должна быть настоящей.
+    //
+    // Раньше сюда шла любая строка от клиента: `rollShopStock` на незнакомое имя
+    // отдавала пустой список, а ключ в `stock` всё равно заводился и жил до
+    // выхода игрока. Замер: двести сообщений с новым именем по два килобайта —
+    // двести ключей, ни одного отказа. Мегабайтным именем это превращается в
+    // способ съесть память комнаты одним соединением.
+    if (!SHOPS.includes(лавка)) return null;
     const key = p.pid + ':' + лавка;
     let s = this.stock.get(key);
     if (!s) {
@@ -63,6 +71,7 @@ export class Market {
 
   buy(p, лавка, slot) {
     const s = this.ассортимент(p, лавка);
+    if (!s) return нет('такой лавки нет');
     const it = s.find((x) => x.slot === (slot | 0));
     if (!it) return нет('такого товара нет');
     const price = Math.max(1, Math.round(it.price || 1));
@@ -183,12 +192,23 @@ export class Market {
     return да({ what: 'рассыпалось', name: base.name });
   }
 
-  /** Три одинаковые руны + золото → одна руна следующего ранга. */
+  /**
+   * Три одинаковые руны + золото → одна руна следующего ранга.
+   *
+   * «Три» — это три разные вещи, а не один номер, названный трижды. Без этой
+   * проверки `find` три раза возвращал один и тот же предмет, все сравнения
+   * «одинаковые ли они» сходились сами с собой, и одна руна превращалась в руну
+   * выше рангом. У заточки такая проверка была с самого начала — здесь её
+   * забыли, и нашлась она только проверкой готовности к релизу.
+   */
   fuse(p, ids) {
-    const выбор = (Array.isArray(ids) ? ids : []).slice(0, 3)
+    const номера = (Array.isArray(ids) ? ids : []).slice(0, 3);
+    if (new Set(номера).size < номера.length) return нет('одна и та же руна дважды');
+    const выбор = номера
       .map((id) => p.inventory.find((x) => x.id === id))
       .filter(Boolean);
     if (выбор.length < 3) return нет('нужно три руны');
+    if (new Set(выбор).size < 3) return нет('одна и та же руна дважды');
     const [a] = выбор;
     if (a.kind !== 'rune') return нет('это не руны');
     if (!выбор.every((r) => r.kind === 'rune' && r.sub === a.sub && r.rarity === a.rarity)) {

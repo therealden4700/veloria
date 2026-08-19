@@ -547,6 +547,17 @@ export const MATERIAL_KEYS = Object.keys(MATERIALS);
 export { CONSUMABLES, MATERIALS };
 
 /** Ассортимент лавки — зависит от уровня героя, обновляется при заходе в город. */
+/**
+ * Какие лавки в игре есть.
+ *
+ * Список рядом с тем, кто по нему раскладывает товар, — чтобы не разошёлся.
+ * Нужен комнате: она обязана отказать на выдуманное имя, иначе ассортимент
+ * заводится под любую строку и остаётся в памяти до выхода игрока. Замер:
+ * двести сообщений с новым именем по два килобайта — двести ключей, ни одного
+ * отказа.
+ */
+export const SHOPS = ['smith', 'armory', 'runes', 'alchemy', 'wander'];
+
 export function rollShopStock(shop, playerLevel, seed) {
   const rng = makeRng(seed);
   const lvl = Math.max(1, playerLevel);
