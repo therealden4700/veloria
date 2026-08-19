@@ -30,6 +30,25 @@ const SEND_HZ = 20;                 // как часто шлём ввод
 const SEND_MS = 1000 / SEND_HZ;
 const INTERP_MS = 100;              // на сколько отстаёт отрисовка чужих
 const HISTORY_MAX = 120;            // хватит на три секунды при 20 Гц
+
+/**
+ * Почему закрылось — словами, которые можно показать игроку.
+ *
+ * Комната отказывает кодом закрытия, а не ответом, и коды у неё осмысленные.
+ * Без этого перевода игрок видел бы «не подключиться» на всё подряд — и не
+ * догадался бы, что достаточно войти заново.
+ */
+function причинаЗакрытия(ev) {
+  const код = ev && ev.code;
+  const сказано = ev && ev.reason;
+  if (код === 1008) return 'сессия устарела — войди заново';
+  if (код === 1013) return 'в мире сейчас людно, попробуй позже';
+  if (код === 1002 || код === 1003) return 'комната не поняла клиента';
+  if (код === 1011) return 'комната не смогла принять — попробуй ещё раз';
+  if (код === 1001) return 'связь потеряна';
+  if (код === 1000) return сказано || 'связь закрыта';
+  return сказано || 'связь с комнатой прервалась';
+}
 const SNAP_KEEP = 20;
 
 export class Net {
@@ -60,10 +79,26 @@ export class Net {
       let ws;
       try { ws = new WebSocket(url); } catch (e) { this.state = 'error'; this.error = String(e.message); done(null); return; }
       this.ws = ws;
-      const fail = (why) => { this.state = 'error'; this.error = why; done(null); };
+      let решено = false;
+      const fail = (why) => { if (решено) return; решено = true; this.state = 'error'; this.error = why; done(null); };
       ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', ...hello }));
       ws.onerror = () => fail('нет связи с комнатой');
-      ws.onclose = () => { if (this.state !== 'error') { this.state = 'offline'; } this.ws = null; };
+      ws.onclose = (ev) => {
+        const был = this.state;
+        if (this.state !== 'error') this.state = 'offline';
+        this.ws = null;
+        // Комната отказывает не ответом, а закрытием: 1008 — нужен токен, 1013 —
+        // людно. Раньше `onclose` обещание не трогал, а сторож на пять секунд
+        // проверял `state === 'connecting'` — и не срабатывал, потому что эта же
+        // строка уже перевела состояние в `offline`. Итог: игрок жал «В общий
+        // город», и не происходило ничего. Ни сообщения, ни экрана, и повторное
+        // нажатие такое же.
+        if (был === 'connecting') { fail(причинаЗакрытия(ev)); return; }
+        // Уже играли — значит это обрыв, и молчать о нём нельзя: мир иначе
+        // просто становится одиночным, а игрок этого не замечает и продолжает
+        // набивать то, что никуда не попадёт.
+        if (был === 'online' && this.onDrop) this.onDrop(причинаЗакрытия(ev));
+      };
       ws.onmessage = (ev) => {
         let m;
         try { m = JSON.parse(ev.data); } catch { return; }
