@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="ru">
+<!-- Язык страницы ставит сама игра: `initLang` пишет сюда выбранный, а по
+     умолчанию английский. Здесь стоит то же умолчание, чтобы разметка не
+     противоречила первому кадру. -->
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="author" content="therealden4700">
-<meta name="description" content="Veloria — 2D-пиксельная ARPG в браузере. Вся графика, звук и музыка рождаются кодом при загрузке.">
+<meta name="description" content="Veloria — a 2D pixel ARPG in the browser. Every sprite, sound and note is generated in code at load time.">
 <meta name="copyright" content="© 2026 therealden4700">
 <!-- Где стоит комната общего мира.
      Пусто — комната там же, откуда пришла страница: так работает `node
@@ -31,13 +34,16 @@
   </div>
   <div id="boot">
     <div class="logo">VELORIA</div>
-    <div class="sub">кузнь мира…</div>
+    <!-- Первая надпись до того, как выполнится хоть одна строка кода. Дальше
+         `main.js` заменит её переведённой — но первый кадр рисует браузер, и
+         англичанину не должно достаться русское слово даже на миг. -->
+    <div class="sub">forging the world…</div>
     <div class="bar"><i></i></div>
   </div>
   <div id="rotate">
     <div class="glyph"></div>
-    <div class="t">ПОВЕРНИ ЭКРАН</div>
-    <div class="s">Veloria играется в ландшафте: мир шире, чем выше.<br>Turn your device sideways to play.</div>
+    <div class="t">TURN YOUR SCREEN</div>
+    <div class="s">Veloria plays in landscape: the world is wider than it is tall.</div>
   </div>
   <div id="fatal" hidden></div>
   <script type="module" src="./src/main.js"></script>

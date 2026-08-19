@@ -11,6 +11,8 @@ import { attachScreen } from './core/screen.js';
 import { attachStage } from './ui/stage.js';
 import { attachTouch } from './core/touch.js';
 import { restoreWallet } from './core/wallet.js';
+import { initLang, onLangChange, t } from './core/i18n.js';
+import { loadOptions } from './core/save.js';
 
 const VIEW = { w: 480, h: 270 };
 
@@ -24,6 +26,25 @@ const uictx = attachStage(uiCanvas);
 const boot = document.getElementById('boot');
 const bootBar = boot.querySelector('.bar i');
 const bootTip = boot.querySelector('.sub');
+
+// Язык — до первого нарисованного слова. Экран загрузки появляется раньше
+// `Game`, а язык восстанавливал именно конструктор игры: первые две строки
+// человек видел на языке по умолчанию, даже если однажды выбрал другой.
+initLang(loadOptions().lang);
+bootTip.textContent = t('кузнь мира…');
+
+// Подсказка про поворот экрана живёт в разметке, а не на канвасе: её надо
+// показать раньше, чем игра вообще загрузится. Значит и переводить её надо
+// отдельно — и заново, когда язык сменили в настройках.
+function перевестиРазметку() {
+  const r = document.getElementById('rotate');
+  if (!r) return;
+  const заголовок = r.querySelector('.t'), пояснение = r.querySelector('.s');
+  if (заголовок) заголовок.textContent = t('ПОВЕРНИ ЭКРАН');
+  if (пояснение) пояснение.textContent = t('Veloria играется в ландшафте: мир шире, чем выше.');
+}
+перевестиРазметку();
+onLangChange(перевестиРазметку);
 
 attachScreen(canvas);
 
@@ -57,7 +78,7 @@ async function bootstrap() {
 
   for (let i = 0; i < STEPS.length; i++) {
     const [label, fn] = STEPS[i];
-    bootTip.textContent = label + '…';
+    bootTip.textContent = t(label) + '…';
     bootBar.style.width = Math.round(((i + 0.2) / STEPS.length) * 100) + '%';
     await frame();
     try { fn(); } catch (e) { fatal(e); return; }
@@ -77,7 +98,7 @@ async function bootstrap() {
   // создания игры — слою нужны и пояс HUD, и меню, чтобы знать, когда молчать.
   attachTouch(canvas, input, game);
 
-  bootTip.textContent = 'разворачиваем карту…';
+  bootTip.textContent = t('разворачиваем карту…');
   await art;
 
   bootBar.style.width = '100%';

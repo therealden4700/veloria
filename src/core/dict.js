@@ -172,7 +172,10 @@ export const RU_EN = {
   ' · берегись': ' · beware',
   'загрузка…': 'loading…',
 
-  // ───────────────────────────────── загрузка (main.js)
+  // ───────────────────────────────── загрузка (main.js, index.html)
+  'кузнь мира…': 'forging the world…',
+  'ПОВЕРНИ ЭКРАН': 'TURN YOUR SCREEN',
+  'Veloria играется в ландшафте: мир шире, чем выше.': 'Veloria plays in landscape: the world is wider than it is tall.',
   'подбираем палитру': 'mixing the palette',
   'высекаем камень и дерево': 'carving stone and timber',
   'вдыхаем жизнь в тварей': 'breathing life into beasts',

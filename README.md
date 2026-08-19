@@ -98,7 +98,7 @@ for skills, `Shift` to dash, `Q` for a potion, `E` to interact. `I` inventory,
 | **Elements** | four marks that react with each other — corrosion, conduction, steam, shatter |
 | **Gear** | rarities, affixes, set bonuses, 22 legendary properties, skill runes you fuse |
 | **Forge** | crafting, reforging, salvage, and sharpening that can destroy the weapon |
-| **Languages** | Russian and English, switchable in settings |
+| **Languages** | English by default, Russian in settings — switched without a reload |
 | **Multiplayer** | a room server on Node built-ins; the server simulates, the client predicts |
 
 ## Everything below is a work journal
@@ -2811,8 +2811,32 @@ is exactly what was measured.
 
 ### Two languages
 
-Russian and English, switched in Settings without a reload. The dictionary key is
-**the Russian string itself** rather than an invented identifier: what stays in
+**English by default, Russian by choice.** The dictionary keys are Russian, and
+for a long time so was the default — for no better reason than that being the
+language the code was written in. The game sits behind an open link, and whoever
+opens it is more likely to read English. Russian did not go anywhere: it is two
+clicks away in Settings, and the choice is remembered.
+
+Changing the default turned out to be two lines and then a hunt, because not
+every string is drawn by the game. The loading screen is written straight into
+the DOM before a single line of game code runs, and the "turn your screen" notice
+has to appear before the game has even loaded — both went around the dictionary.
+Worse, the language was restored by the `Game` constructor, which is built *after*
+the loading screen: the first two lines a player saw were on the default
+language whatever they had once chosen. `initLang` now runs before the first
+painted word, and it also stamps `<html lang>`, which is what screen readers and
+browser translation go by.
+
+[`tools/lang-check.js`](tools/lang-check.js) — 22 checks, and it reads the boot
+labels out of `main.js` rather than keeping its own copy of them. It also scans
+`index.html` for Cyrillic left in visible markup, because that first frame is
+painted by the browser and shows exactly what is written in the file. Four
+mutations, each red only where it belongs: default back to Russian (1), the saved
+choice not restored (3), a Russian string back in the markup (1), a boot label
+missing from the dictionary (1).
+
+The rest of the machinery is unchanged. The dictionary key is **the Russian
+string itself** rather than an invented identifier: what stays in
 the code is live text you can see while reading, not `t('menu.pause.save')`.
 Translation is substituted **inside `text()`** rather than at the call sites.
 Measured before the work: of 901 occurrences of Russian strings, 833 reach
