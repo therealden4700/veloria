@@ -19,6 +19,15 @@
 // Довод из ссылки проверяется как чужой ввод: `javascript:` и прочее в адрес не
 // пускаем, иначе ссылкой можно увести игрока в подставную комнату.
 
+/** Мета-тег с адресом комнаты. Без разметки — без тега, и это не ошибка. */
+function тегКомнаты() {
+  if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return null;
+  try {
+    const m = document.querySelector('meta[name="veloria-server"]');
+    return m ? m.getAttribute('content') : null;
+  } catch { return null; }
+}
+
 /** Только настоящий сетевой адрес. Всё остальное — не адрес. */
 function годныйАдрес(v) {
   if (!v || typeof v !== 'string') return null;
@@ -41,8 +50,11 @@ export function serverBase(где) {
   const и = где || (typeof location !== 'undefined' ? {
     origin: location.origin,
     search: location.search,
-    meta: (typeof document !== 'undefined' && document.querySelector('meta[name="veloria-server"]'))
-      ? document.querySelector('meta[name="veloria-server"]').getAttribute('content') : null,
+    // `document` есть и в безголовой сборке, но там он — заглушка без разбора
+    // разметки. Спрашивать надо про метод, а не про объект: проверка «document
+    // существует» пропускала вызов `querySelector`, которого у заглушки нет, и
+    // роняла стенд на ровном месте.
+    meta: тегКомнаты(),
   } : { origin: '', search: '', meta: null });
 
   let изСсылки = null;
