@@ -11,6 +11,9 @@ every sprite, every shadow, every note of music written in code.**
 
 ### ▶ [Play it in your browser](https://therealden4700.github.io/veloria/)
 
+*Single-player is live now. The shared world goes up shortly —
+the code is ready and measured; what it is waiting on is a host.*
+
 *by [therealden4700](https://github.com/therealden4700)*
 
 </div>
