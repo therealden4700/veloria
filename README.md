@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="shots/veloria-launch.png" width="360" alt="Veloria">
+
 # VELORIA
 
 ### No engine. No assets. No build step.
