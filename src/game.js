@@ -248,6 +248,7 @@ export class Game {
     net.onDeal = (m) => this.дошлаСделка(m);
     net.onShop = (m) => { if (this.menus.shop && this.menus.shop.npcId === m.npc) this.menus.shop.stock = (m.stock || []).map(reviveItem).filter(Boolean); };
     net.onWelcome = (msg) => {
+      this.применитьСтража(msg);
       if (!msg.world || msg.world.seed === undefined || msg.world.seed === this.worldSeed) return;
       this.worldSeed = msg.world.seed;
       this.zoneCache.clear();
@@ -1682,6 +1683,20 @@ export class Game {
   вложитьОчко(k) {
     if (net.online) { net.торг({ t: 'stat', k }); return true; }
     return this.player.spendStat(k);
+  }
+
+  /**
+   * Открыть спуск, если страж уже повержен.
+   *
+   * Лестница вниз на боссовом этаже заперта до его смерти, а замок снимало
+   * только событие убийства — то есть лишь у того, кто при этом был. Пришёл на
+   * этаж, где стража уже положили и он ждёт возвращения, — и спуск заперт
+   * стражем, которого на этаже нет. Комната теперь говорит это при входе.
+   */
+  применитьСтража(msg) {
+    const с = msg && msg.страж;
+    if (!с || !с.побеждён) return;
+    if (this.zone && this.zone.downExit) this.zone.downExit.locked = false;
   }
 
   applyQuests(m) {

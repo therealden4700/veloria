@@ -199,6 +199,10 @@ class Room {
     this.sendTo(p, {
       t: 'welcome', pid: p.pid, room: this.id, tickHz: TICK_HZ, now: Date.now(),
       world: this.world.describe(),
+      // Что со стражем — сразу при входе. Спуск на боссовом этаже заперт до его
+      // смерти, а замок снимало только событие убийства: пришёл на этаж, где
+      // страж уже убит и ждёт возвращения, — и спуск заперт тем, кого нет.
+      страж: this.world.стражСостояние(),
     });
     // Журнал берём из того же сохранения, что и героя. У гостя его переносит
     // соединение — вместе с самим героем.
@@ -914,7 +918,14 @@ attachWebSocket(http, (conn, req) => {
     if (player && player.ent) {
       const w = цель.world;
       if (w.kind === 'biome') цель.quests.событие(player.ent, 'onEnterBiome', w.biomeId);
-      if (w.kind === 'dungeon') цель.quests.событие(player.ent, 'onDepth', w.floor);
+      if (w.kind === 'dungeon') {
+        // Рекорд глубины рос только в клиентском `doTravel`, а в общем мире его
+        // не вёл никто: он оставался нулём навсегда, и вместе с ним пропадали и
+        // вид контракта на глубину, и таблица рекордов. Поднимаем ДО события:
+        // задание про глубину смотрит на ту же цифру.
+        if (w.floor > (player.ent.deepest || 0)) { player.ent.deepest = w.floor; цель.world.dirty = true; }
+        цель.quests.событие(player.ent, 'onDepth', w.floor);
+      }
     }
     sweepRooms();
   };
