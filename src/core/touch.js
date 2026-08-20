@@ -30,6 +30,10 @@ export function isCoarsePointer() {
 
 export function attachTouch(canvas, input, game) {
   if (!('ontouchstart' in window) && !isCoarsePointer()) return false;
+  // HUD рисует сенсорные кнопки только здесь: на настольном их быть не должно,
+  // а до первого касания `input.touch` ещё ложь — и человек с телефона видел бы
+  // экран без кнопок ровно до того мгновения, когда они ему понадобятся.
+  input.сенсорный = true;
 
   let стик = null;                     // { id, x0, y0 }
   const кнопки = new Map();            // id касания → действие

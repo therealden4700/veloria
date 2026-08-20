@@ -81,6 +81,7 @@ export class Hud {
     this.drawLesson(g);
     this.drawBanner(g, game);
     this.drawPrompt(g, game);
+    this.drawTouchButtons(g, game);
   }
 
   drawVitals(g, p, game) {
@@ -764,6 +765,56 @@ export class Hud {
     g.fillRect(x + 7, y + 5, 10, 10);
     text(g, pr.key || 'E', x + 12, y + 6, { size: 8, align: 'center', color: '#100c1c', bold: true });
     text(g, label, x + 23, y + 5, { size: 10, color: UI.text, bold: true });
+    // Подсказка — это и кнопка. Пока она висит, игра обещает действие; на
+    // телефоне обещание надо чем-то исполнять, а клавиши E там нет. Тот же
+    // приём, что и с поясом: попадаем по уже нарисованному, а не заводим второй
+    // набор координат.
+    (this.touchSlots ||= []).push({ x, y, w, h: 20, action: 'interact' });
+  }
+
+  /**
+   * Кнопки, которых нет на клавиатуре, — потому что клавиатуры нет.
+   *
+   * Игра раздаётся ссылкой, а ссылку на браузерную игру чаще открывают с
+   * телефона. Замер перед релизом: сенсорных целей было четыре — удар, руна,
+   * рывок, зелье, — и человек с телефона мог только ходить и бить. Ни рюкзака,
+   * ни паузы, ни разговора с торговцем.
+   *
+   * Рисуем только на сенсорном устройстве: на настольном они были бы шумом.
+   * Место — верхний правый угол: слева полосы, внизу пояс и миникарта.
+   */
+  drawTouchButtons(g, game) {
+    if (!(game.input && game.input.сенсорный)) return;
+    const { w: W } = this.view;
+    const S = 22, M = 8, зазор = 4;
+    const кнопки = [
+      { action: 'inventory', рисуй: (bx, by) => {
+        // сумка: трапеция с ручкой
+        g.fillStyle = UI.text;
+        g.fillRect(bx + 6, by + 9, 10, 8);
+        g.fillRect(bx + 8, by + 6, 6, 1);
+        g.fillRect(bx + 8, by + 6, 1, 3); g.fillRect(bx + 13, by + 6, 1, 3);
+      } },
+      // Действие `cancel`, а не `pause`: меню паузы открывается по нему
+      // (`menus.js`, `input.consume('cancel')`). `Escape` в раскладке значится
+      // обоими, и это скрывало, что `pause` не читает никто. Кнопка со
+      // «правильным» именем не открывала ничего — поймано в браузере.
+      { action: 'cancel', рисуй: (bx, by) => {
+        g.fillStyle = UI.text;
+        g.fillRect(bx + 8, by + 6, 2, 10); g.fillRect(bx + 12, by + 6, 2, 10);
+      } },
+    ];
+    let x = W - M - S;
+    for (const к of кнопки) {
+      const y = M;
+      bevelPath(g, x, y, S, S, 4);
+      g.fillStyle = 'rgba(12,10,22,0.86)';
+      g.fill();
+      g.strokeStyle = UI.border; g.lineWidth = 1; g.stroke();
+      к.рисуй(x, y);
+      (this.touchSlots ||= []).push({ x, y, w: S, h: S, action: к.action });
+      x -= S + зазор;
+    }
   }
 }
 
