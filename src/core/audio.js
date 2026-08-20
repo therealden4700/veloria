@@ -82,6 +82,29 @@ class Audio {
 
   resume() { if (this.ready && this.ctx.state === 'suspended') this.ctx.resume(); }
 
+  /**
+   * Просыпаться вместе с вкладкой.
+   *
+   * Браузер усыпляет звуковой контекст, когда вкладка уходит в фон, и сам его
+   * не будит. `resume` звался трижды за жизнь страницы — при первом жесте и при
+   * старте игры, — и ни разу при возвращении: свернул игру на телефоне,
+   * вернулся и доиграл в тишине до перезагрузки.
+   *
+   * Живёт здесь, а не в точке входа: это часть жизни звука, и проверять её надо
+   * там же, где она написана. В точке входа проверка вырождалась в поиск слова
+   * `visibilitychange` по тексту — мутация, обернувшая слушателя в `if (false)`,
+   * прошла мимо неё насквозь.
+   */
+  следитьЗаВкладкой(окно = globalThis) {
+    if (this._следим || !окно || typeof окно.addEventListener !== 'function') return false;
+    this._следим = true;
+    окно.addEventListener('visibilitychange', () => {
+      const d = окно.document;
+      if (!d || d.visibilityState === 'visible') this.resume();
+    });
+    return true;
+  }
+
   _impulse(dur, decay) {
     const sr = this.ctx.sampleRate, len = (sr * dur) | 0;
     const buf = this.ctx.createBuffer(2, len, sr);

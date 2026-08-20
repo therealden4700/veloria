@@ -67,9 +67,11 @@ failure.
 node tools/cross-origin-check.js 3000
 ```
 
-Fifteen checks: that the page can work out where the room is, that a named site
-gets a preflight answer and a permission header, that an unknown site gets
-neither, and that the socket refuses strangers while still letting the stands in.
+It checks that the page can work out where the room is, that a named site gets a
+preflight answer and a permission header, that an unknown site gets neither, that
+the socket refuses strangers while still letting the stands in, and that the file
+server hands out the game and nothing else. However many checks it prints is how
+many there are — a number written here would only drift.
 
 The room must be up with the origin you are testing:
 

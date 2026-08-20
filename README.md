@@ -2214,9 +2214,12 @@ room on `localhost:3000`, guest sign-in over CORS, socket up, hero walked from
 errors. Standing still does not drop you — the client keeps sending zero-length
 steps.
 
-[`tools/cross-origin-check.js`](tools/cross-origin-check.js) is 15 checks over
-all of it, and four mutations each turn red only their own: no preflight branch
-(1), wildcard permission (3), no socket `Origin` check (1), meta tag ignored (1).
+[`tools/cross-origin-check.js`](tools/cross-origin-check.js) covers all of it —
+the count it prints is the count, and writing a number here only guarantees the
+number goes stale. Four mutations each turn red only their own: no preflight
+branch (1), wildcard permission (3), no socket `Origin` check (1), meta tag
+ignored (1). It also guards what the file server hands out, after it turned out
+to hand out the player database.
 
 [`DEPLOY.md`](DEPLOY.md) is the rest: a Dockerfile with no build step and no
 dependencies, one volume for the database, the environment variables in one

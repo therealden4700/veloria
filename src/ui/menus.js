@@ -1843,7 +1843,16 @@ export class Menus {
       if (getWallet().token) {
         opts.push([net.online ? 'В общем городе' : 'В общий город', () => {
           if (net.online) this.game.goOffline();
-          else this.game.goOnline().then((r) => { if (r !== 'online') this.game.toast(String(r), UI.danger); });
+          // Причину отказа держим у себя, а не отдаём в HUD.
+          //
+          // `toast` рисует HUD, а на титульном экране HUD не рисуется вовсе:
+          // игрок жал кнопку, вход не удавался — и на экране не появлялось
+          // ровно ничего. Строка состояния под кнопками здесь уже есть, ей и
+          // говорим.
+          else {
+            this.мирОтвет = 'связываемся с общим миром…';
+            this.game.goOnline().then((r) => { this.мирОтвет = r === 'online' ? null : String(r); });
+          }
         }]);
       }
       opts.push(['Настройки', () => this.openSettings('title')]);
@@ -1879,6 +1888,14 @@ export class Menus {
       text(g, line, W / 2, H - 26, {
         size: 9, align: 'center', bold: busy,
         color: w.error ? UI.danger : busy ? UI.accent : '#9a94b8',
+      });
+    }
+
+    // Что ответил общий мир. Своя строка, а не HUD: HUD на титуле не рисуется.
+    if (this.мирОтвет) {
+      text(g, this.мирОтвет, W / 2, H - 38, {
+        size: 9, align: 'center', bold: true,
+        color: this.мирОтвет.endsWith('…') ? UI.accent : UI.danger,
       });
     }
 

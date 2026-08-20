@@ -192,6 +192,7 @@ export const RU_EN = {
 
   // ───────────────────────────────── вход в общий мир (menus.js)
   'В общий город': 'Join the shared city',
+  'связываемся с общим миром…': 'reaching the shared world…',
   'В общем городе': 'In the shared city',
 
   // ───────────────────────────────── двери Бездны (dungeon_mods.js)
