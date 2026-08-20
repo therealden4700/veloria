@@ -81,6 +81,26 @@ To try the whole thing locally, serve the page from one port and the room from
 another — that is exactly the split that production has, and it is the only way
 to see it work before it is live.
 
+## What the room stores about a player
+
+Three things, and nothing else: the wallet address (as the primary key), when
+they first and last signed in with how many logins, and the hero the world keeps
+for them. Guests are stored as nothing at all — they have no address, so there
+is nowhere to write.
+
+Players are told this on the entry screen, before they sign in rather than after.
+A player can delete all of it at any time:
+
+```bash
+curl -X POST https://veloria.fly.dev/account/forget -H 'content-type: application/json' -d '{"token":"<their session token>"}'
+```
+
+The token proves it is their own account — an address alone would let anyone
+erase anyone's hero. Deletion removes the account row, the character and every
+session; it does not mark anything deleted, because marked-as-deleted is still
+stored. They are disconnected from the world first, or the room would write the
+hero back with its next save and undo it.
+
 ## Two things to know before you go live
 
 **Stopping is not free.** The room writes characters every eight seconds, so a

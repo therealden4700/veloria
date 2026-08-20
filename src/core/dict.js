@@ -172,6 +172,9 @@ export const RU_EN = {
   ' · берегись': ' · beware',
   'загрузка…': 'loading…',
 
+  'Общий мир хранит адрес кошелька, время входов и героя. Удалиться — в настройках':
+    'The shared world stores your wallet address, sign-in times and your hero. You can delete it in Settings',
+
   // ───────────────────────────────── экран настроек (menus.js)
   //
   // Половина этого экрана оставалась русской — и это тот самый экран, где язык
@@ -244,6 +247,7 @@ export const RU_EN = {
   'сила полная': 'mana is full',
   'тело не разобрать': 'the body could not be read',
   'сессия неизвестна': 'unknown session',
+  'у гостя нечего хранить': 'a guest has nothing stored',
   'внутренняя ошибка': 'internal error',
   'слишком много подключений с одного адреса': 'too many connections from one address',
   'вход с этой учётки в другом окне': 'this account signed in from another window',

@@ -55,6 +55,19 @@ export function openDb(file = FILE) {
       data      TEXT NOT NULL,
       world     TEXT
     );
+    -- Сессии.
+    --
+    -- Жили только в памяти, и каждое обновление сервера разлогинивало всех: а
+    -- токен лежит в браузере неделю, и человек жал «В общий город» и получал
+    -- отказ, ничего не сделав. Выкладка — обычное дело, и она не должна
+    -- выбрасывать тех, кто в этот миг играет.
+    CREATE TABLE IF NOT EXISTS sessions (
+      token   TEXT PRIMARY KEY,
+      address TEXT,
+      guest   INTEGER NOT NULL DEFAULT 0,
+      born    INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sess_born ON sessions(born);
     CREATE INDEX IF NOT EXISTS idx_depth ON characters(deepest DESC);
     CREATE INDEX IF NOT EXISTS idx_level ON characters(level DESC);
   `);
@@ -169,6 +182,50 @@ export function dbStats() {
   const a = q('SELECT COUNT(*) AS n FROM accounts').get();
   const c = q('SELECT COUNT(*) AS n FROM characters').get();
   return { accounts: a.n, characters: c.n, file: FILE };
+}
+
+/** Записать сессию: она должна пережить обновление сервера. */
+export function saveSession(token, address, guest, born) {
+  try { q('INSERT OR REPLACE INTO sessions (token,address,guest,born) VALUES (?,?,?,?)').run(token, address ?? null, guest ? 1 : 0, born); } catch { /* не беда: в памяти она есть */ }
+}
+
+/** Прочитать сессию с диска. Зовут только когда в памяти её нет. */
+export function loadSession(token) {
+  try {
+    const r = q('SELECT address, guest, born FROM sessions WHERE token = ?').get(token);
+    return r ? { address: r.address ?? null, guest: !!r.guest, born: r.born } : null;
+  } catch { return null; }
+}
+
+export function dropSession(token) {
+  try { q('DELETE FROM sessions WHERE token = ?').run(token); } catch { /* нет так нет */ }
+}
+
+/** Выбросить протухшие. Зовут изредка: таблица маленькая, но не бесконечная. */
+export function sweepSessions(старше) {
+  try { q('DELETE FROM sessions WHERE born < ?').run(старше); } catch { /* нет так нет */ }
+}
+
+/**
+ * Забыть учётку целиком: адрес, персонажа и все её сессии.
+ *
+ * Хранится немного — адрес кошелька, время входов и герой, — но это чужие
+ * данные, и уйти человек должен уметь так же просто, как пришёл. Стираем всё
+ * разом, а не помечаем удалённым: помеченное остаётся хранимым.
+ */
+export function forgetAccount(address) {
+  try {
+    const db2 = openDb();
+    db2.exec('BEGIN');
+    q('DELETE FROM characters WHERE address = ?').run(address);
+    q('DELETE FROM sessions WHERE address = ?').run(address);
+    q('DELETE FROM accounts WHERE address = ?').run(address);
+    db2.exec('COMMIT');
+    return { ok: true, what: 'удалено' };
+  } catch (e) {
+    try { openDb().exec('ROLLBACK'); } catch { /* уже откатилось */ }
+    return { ok: false, why: 'не удалось удалить: ' + e.message };
+  }
 }
 
 export function closeDb() { if (db) { db.close(); db = null; } }

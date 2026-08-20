@@ -26,7 +26,7 @@ import { QuestBook } from './quests.js';
 import { BIOMES } from '../src/world/biomes.js';
 import { FLOOR_MODS } from '../src/systems/dungeon_mods.js';
 import { issueNonce, buildMessage, verifySignature, newSession, readSession, stats as authStats } from './auth.js';
-import { openDb, touchAccount, loadCharacter, saveCharacter, loadWorldCharacter, saveWorldCharacter, topDepth, dbStats, closeDb } from './db.js';
+import { openDb, touchAccount, loadCharacter, saveCharacter, loadWorldCharacter, saveWorldCharacter, topDepth, dbStats, closeDb, forgetAccount } from './db.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PORT = Number(process.env.PORT || 8123);
@@ -53,6 +53,15 @@ const SHOP_MS = 250;
 // чтобы что-то занять.
 const СООБЩЕНИЙ_В_СЕКУНДУ = 60;
 const SAVE_MS = 8000;        // как часто комната пишет персонажей в базу
+// Через сколько молчания такта считать мир вставшим. Такт идёт двадцать раз в
+// секунду; три секунды — это шестьдесят пропущенных подряд, случайностью такое
+// не объяснить.
+//
+// Настраивается затем же, зачем настраивается всё остальное: чтобы стенд мог
+// поднять сервер с порогом в миллисекунду и увидеть ответ 503 своими глазами.
+// Проверка «поле есть» ничего не стоит — мутация, вернувшая вечный `ok: true`,
+// прошла мимо неё насквозь.
+const ЗАСТОЙ_MS = Math.max(1, Number(process.env.STALL_MS) || 3000);
 
 /**
  * Кому позволено обращаться к комнате из браузера.
@@ -410,6 +419,16 @@ class Room {
     const dt = Math.min(0.25, (now - this.lastStep) / 1000);
     this.lastStep = now;
     this.world.step(dt);
+    // Отметка «мир шагнул» — здесь, а не в начале такта и не в конце.
+    //
+    // Не в начале: `tick` растёт первой же строкой, поэтому по нему «мир жив» и
+    // «мир падает на каждом такте» не различались никак.
+    //
+    // И не в конце: у такта есть ранний выход, когда в комнате никого, — пустая
+    // комната объявлялась бы вставшей через три секунды, хотя она просто пуста.
+    // Первая же версия этой отметки на этом и попалась: `/health` отдал 503 на
+    // совершенно здоровом сервере.
+    this.дошёл = Date.now();
     // Отключаем тех, с кем оборвалась связь, — а не тех, кто просто молчит.
     //
     // Раньше смотрели только на `lastSeen`, а его двигают игровые сообщения.
@@ -609,6 +628,31 @@ async function routeApi(req, res, path) {
     return true;
   }
 
+  /**
+   * Удалиться.
+   *
+   * Сервер хранит адрес кошелька как первичный ключ, время входов и персонажа —
+   * это чужие данные, и уйти из игры человек должен уметь так же просто, как
+   * пришёл. Спрашиваем токен, а не адрес: назваться чужим адресом иначе смог бы
+   * кто угодно и стёр бы чужого героя.
+   */
+  if (path === '/account/forget' && req.method === 'POST') {
+    const b2 = await readBody(req);
+    const sess = readSession(b2 && b2.token);
+    if (!sess) { json(res, 401, { ok: false, why: 'сессия неизвестна' }); return true; }
+    if (!sess.address) { json(res, 200, { ok: true, guest: true, why: 'у гостя нечего хранить' }); return true; }
+    // Из мира выводим сразу: иначе комната допишет героя обратно ближайшей
+    // записью, и удаление отменится само собой.
+    for (const r of rooms.values()) {
+      for (const [cid, p] of r.players) {
+        if (p.address === sess.address) { try { p.conn.close(1000, 'учётка удалена'); } catch { /* уже нет */ } r.remove(cid); }
+      }
+    }
+    const итог = forgetAccount(sess.address);
+    json(res, итог.ok ? 200 : 500, итог);
+    return true;
+  }
+
   if (path === '/leaderboard') {
     json(res, 200, { top: topDepth(20).map((r) => ({
       // адрес показываем укороченным: полный на доске никому не нужен
@@ -754,9 +798,22 @@ const http = createServer(async (req, res) => {
     return;
   }
   if (path === '/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
+    // Живой процесс и живой мир — разные вещи. Хостер смотрит на код ответа, и
+    // если такт встал, а порт отвечает, машину никто не перезапустит: снаружи
+    // всё «хорошо», а внутри мир стоит.
+    //
+    // Считаем от самой давней комнаты: одна вставшая — уже беда для тех, кто в
+    // ней. Пустой комнаты не бывает дольше переезда, их сносит `sweepRooms`.
+    const now2 = Date.now();
+    const молчат = [...rooms.values()].map((r) => now2 - (r.дошёл || r.startedAt));
+    const давно = молчат.length ? Math.max(...молчат) : 0;
+    const жив = давно < ЗАСТОЙ_MS;
+    res.writeHead(жив ? 200 : 503, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
-      ok: true, uptime: Math.round((Date.now() - room.startedAt) / 1000),
+      ok: жив,
+      // Сколько миллисекунд назад такт последней комнаты дошёл до конца.
+      шагал: давно,
+      uptime: Math.round((Date.now() - room.startedAt) / 1000),
       players: [...rooms.values()].reduce((n, r) => n + r.size, 0),
       tick: room.tick, stats: room.stats,
       world: room.world.describe(),
@@ -994,6 +1051,23 @@ http.listen(PORT, () => {
  * нас есть у любого.
  */
 let уходим = false;
+/**
+ * Сторожа на непойманное.
+ *
+ * Без них процесс умирает молча: оператор видит только, что сервера нет, и
+ * восстанавливать причину ему не по чему. Не глотаем — записываем и уходим:
+ * умерший с записью в логе честнее живого с неизвестным состоянием внутри.
+ */
+process.on('uncaughtException', (e) => {
+  console.error('НЕПОЙМАННОЕ ИСКЛЮЧЕНИЕ:', e && e.stack ? e.stack : e);
+  try { for (const r of rooms.values()) for (const p of r.players.values()) r.записать(p); } catch { /* уже не выйдет */ }
+  try { closeDb(); } catch { /* уже закрыта */ }
+  process.exit(1);
+});
+process.on('unhandledRejection', (e) => {
+  console.error('НЕПОЙМАННЫЙ ОТКАЗ ОБЕЩАНИЯ:', e && e.stack ? e.stack : e);
+});
+
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     if (уходим) return;                 // второй сигнал не должен рвать запись

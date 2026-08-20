@@ -14,6 +14,8 @@
 // самой игры — отдельная работа, и она в том, чтобы сервер считал бой сам.
 
 import { createPublicKey, verify, randomBytes, timingSafeEqual } from 'node:crypto';
+// Сессии живут на диске: обновление сервера не должно разлогинивать всех.
+import { saveSession, loadSession, dropSession, sweepSessions } from './db.js';
 
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const B58MAP = (() => { const m = new Map(); for (let i = 0; i < B58.length; i++) m.set(B58[i], i); return m; })();
@@ -71,6 +73,9 @@ const уборка = setInterval(() => {
   const now = Date.now();
   for (const [k, v] of nonces) { if (now - v.born > NONCE_TTL) nonces.delete(k); else break; }
   for (const [k, v] of sessions) { if (now - v.born > SESSION_TTL) sessions.delete(k); else break; }
+  // На диске тоже: таблица маленькая, но не бесконечная, и протухшее в ней
+  // копилось бы всё время жизни сервера.
+  sweepSessions(now - SESSION_TTL);
 }, 60000);
 if (уборка.unref) уборка.unref();
 
@@ -168,7 +173,12 @@ const sessions = new Map();           // токен → { address, born, guest }
 
 export function newSession(address, guest = false) {
   const token = randomBytes(24).toString('hex');
-  sessions.set(token, { address, born: Date.now(), guest });
+  const born = Date.now();
+  sessions.set(token, { address, born, guest });
+  // И на диск: сессия обязана пережить обновление сервера. Раньше она жила
+  // только в памяти, и каждая выкладка разлогинивала всех, кто в этот миг
+  // играл, — а токен лежит в браузере ещё неделю.
+  saveSession(token, address, guest, born);
   // За токеном могут и не вернуться, а гостевой вход не требует ничего: без
   // потолка карта росла на каждый заход на страницу и не убывала никогда —
   // три тысячи запросов давали три тысячи вечных записей.
@@ -178,11 +188,25 @@ export function newSession(address, guest = false) {
 
 export function readSession(token) {
   if (typeof token !== 'string' || token.length !== 48) return null;
-  const s = sessions.get(token);
+  let s = sessions.get(token);
+  // Нет в памяти — смотрим на диск: значит сервер перезапускали, а игрок нет.
+  if (!s) {
+    s = loadSession(token);
+    if (s) sessions.set(token, s);
+  }
   if (!s) return null;
-  if (Date.now() - s.born > SESSION_TTL) { sessions.delete(token); return null; }
+  if (Date.now() - s.born > SESSION_TTL) { sessions.delete(token); dropSession(token); return null; }
   return s;
 }
+
+/**
+ * Забыть сессии, оставшиеся в памяти.
+ *
+ * Нужно ровно одному — стенду: обновление сервера иначе не изобразить, а
+ * проверять «переживает ли сессия перезапуск» надо именно им. Диск при этом не
+ * трогаем: в том и смысл.
+ */
+export function забытьСессии() { sessions.clear(); }
 
 /** Сравнение без утечки по времени — на случай перебора токенов. */
 export function sameToken(a, b) {
