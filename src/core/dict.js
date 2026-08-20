@@ -172,6 +172,82 @@ export const RU_EN = {
   ' · берегись': ' · beware',
   'загрузка…': 'loading…',
 
+  // ───────────────────────────────── экран настроек (menus.js)
+  //
+  // Половина этого экрана оставалась русской — и это тот самый экран, где язык
+  // и переключают. Найдено проверкой готовности к релизу.
+  'Звук': 'Sound',
+  'Общая': 'Master',
+  'Музыка': 'Music',
+  'Эффекты': 'Effects',
+  'Сохранение': 'Save file',
+  'героя нет': 'no hero yet',
+  'Выгрузить': 'Export',
+  'Загрузить': 'Import',
+  'файл переживёт чистку браузера': 'a file survives clearing the browser',
+  'ур. {0} · копий {1} · {2} КБ': 'lv. {0} · {1} backups · {2} KB',
+
+  // ───────────────────────────────── вход в общий мир (menus.js)
+  'В общий город': 'Join the shared city',
+  'В общем городе': 'In the shared city',
+
+  // ───────────────────────────────── двери Бездны (dungeon_mods.js)
+  //
+  // Три двери за порогом Бездны появились позже словаря, а описание «Алчности»
+  // переписали и ключ не обновили.
+  'Пасть': 'Maw',
+  'Бездна дышит: врагов гуще и они быстрее.': 'The Abyss breathes: more enemies, and faster.',
+  'Жажда': 'Thirst',
+  'Зелья мертвы, а раны глубже.': 'Potions are dead, and wounds run deeper.',
+  'Полость': 'Hollow',
+  'Враги в панцире, и света почти нет.': 'Enemies are shelled, and there is almost no light.',
+  'Золота и добычи куда больше, но добро стерегут.': 'Far more gold and loot — but it is guarded.',
+
+  // ───────────────────────────────── отказы комнаты (server/*.js)
+  //
+  // Комната отвечает полем `why`, и клиент показывает его игроку дословно. Ни
+  // одна из этих строк не была переведена: англоязычный игрок получал русский
+  // отказ из лавки, кузни, заданий и связи.
+  'такой лавки нет': 'no such shop',
+  'такого товара нет': 'no such item on the counter',
+  'не хватает золота': 'not enough gold',
+  'рюкзак полон': 'your bag is full',
+  'товар не собрался': 'the item could not be made',
+  'этого у тебя нет': 'you do not have that',
+  'нет такого рецепта': 'no such recipe',
+  'не хватает материалов': 'not enough materials',
+  'надень оружие': 'equip a weapon first',
+  'дальше точить некуда': 'it cannot be sharpened further',
+  'топливо не годится': 'that fuel will not do',
+  'одно и то же дважды': 'the same one twice',
+  'нужно три оружия той же редкости': 'three weapons of the same rarity are needed',
+  'одна и та же руна дважды': 'the same rune twice',
+  'нужно три руны': 'three runes are needed',
+  'это не руны': 'those are not runes',
+  'руны должны быть одинаковые': 'the runes must match',
+  'выше некуда': 'there is nothing above this',
+  'журнала нет': 'no journal',
+  'нет такого задания': 'no such quest',
+  'это задание сейчас не взять': 'that quest cannot be taken right now',
+  'задание ещё не выполнено': 'the quest is not finished yet',
+  'сдать не вышло': 'handing it in did not work',
+  'слишком часто': 'too often',
+  'непонятно, что делать': 'unclear what to do',
+  'здесь нет ни лавки, ни кузни': 'there is no shop or forge here',
+  'некому вкладывать': 'nobody to spend it',
+  'нет такого свойства': 'no such attribute',
+  'очков развития нет': 'no points to spend',
+  'некому пить': 'nobody to drink it',
+  'это не выпить': 'that cannot be drunk',
+  'на этом этаже зелья мертвы': 'potions are dead on this floor',
+  'здоровье полное': 'health is full',
+  'сила полная': 'mana is full',
+  'тело не разобрать': 'the body could not be read',
+  'сессия неизвестна': 'unknown session',
+  'внутренняя ошибка': 'internal error',
+  'слишком много подключений с одного адреса': 'too many connections from one address',
+  'вход с этой учётки в другом окне': 'this account signed in from another window',
+
   // ───────────────────────────────── загрузка (main.js, index.html)
   'кузнь мира…': 'forging the world…',
   'ПОВЕРНИ ЭКРАН': 'TURN YOUR SCREEN',
@@ -591,32 +667,40 @@ export const RU_EN = {
     'A shield absorbs damage equal to 25% of your health, for 10s.',
   'Барьер: ': 'Barrier: ',
   'Шипы': 'Thorns',
-  'Отражает {v}% урона, полученного в ближнем бою.': 'Reflects {v}% of the damage taken in melee.',
+  // Метка здесь {0}, а не {v}, хотя в самом умении написано {v}.
+  //
+  // Перевод строки с числом ищет `byPattern`: он заменяет каждое число на
+  // {0}, {1}… и берёт ключ по такой строке. Метку {v} он не строит никогда,
+  // поэтому все тринадцать описаний рун оставались русскими — ключ лежал в
+  // словаре и не находился ни разу.
+  'Отражает {0}% урона, полученного в ближнем бою.': 'Reflects {0}% of the damage taken in melee.',
   'Разгон': 'Momentum',
-  'После убийства +{v}% скорости на 3 сек.': 'After a kill, +{v}% speed for 3s.',
+  // Два числа в строке — значит и меток две: `byPattern` нумерует все подряд,
+  // включая то, что в умении записано литералом.
+  'После убийства +{0}% скорости на {1} сек.': 'After a kill, +{0}% speed for {1}s.',
   'Жажда крови': 'Bloodthirst',
-  'Ниже 40% здоровья: +{v}% вампиризма.': 'Below 40% health: +{v}% lifesteal.',
+  'Ниже {0}% здоровья: +{1}% вампиризма.': 'Below {0}% health: +{1}% lifesteal.',
   'Сосредоточение': 'Focus',
-  'Откат умений короче на {v}%.': 'Skill cooldowns are {v}% shorter.',
+  'Откат умений короче на {0}%.': 'Skill cooldowns are {0}% shorter.',
   'Берсерк': 'Berserk',
-  'До +{v}% урона тем сильнее, чем меньше здоровья.': 'Up to +{v}% damage, the lower your health.',
+  'До +{0}% урона тем сильнее, чем меньше здоровья.': 'Up to +{0}% damage, the lower your health.',
   'Страж': 'Warden',
-  'Урон в ближнем бою по тебе слабее на {v}%.': 'Melee damage against you is {v}% weaker.',
+  'Урон в ближнем бою по тебе слабее на {0}%.': 'Melee damage against you is {0}% weaker.',
   'Проворство': 'Nimbleness',
-  'Откат рывка короче на {v}%.': 'Dash cooldown is {v}% shorter.',
+  'Откат рывка короче на {0}%.': 'Dash cooldown is {0}% shorter.',
   'Поток арканы': 'Arcane Flow',
-  'Каждое убийство возвращает {v} маны.': 'Every kill returns {v} mana.',
+  'Каждое убийство возвращает {0} маны.': 'Every kill returns {0} mana.',
   'Пирокинез': 'Pyrokinesis',
-  'По горящим целям урон выше на {v}%.': 'Damage against burning targets is {v}% higher.',
+  'По горящим целям урон выше на {0}%.': 'Damage against burning targets is {0}% higher.',
   'Ледяное сердце': 'Frozen Heart',
-  'По обмороженным шанс крита выше на {v}%.': 'Crit chance against chilled targets is {v}% higher.',
+  'По обмороженным шанс крита выше на {0}%.': 'Crit chance against chilled targets is {0}% higher.',
   'Токсиколог': 'Toxicologist',
-  'Твой яд и разъедание тикают на {v}% чаще.': 'Your poison and corrosion tick {v}% more often.',
+  'Твой яд и разъедание тикают на {0}% чаще.': 'Your poison and corrosion tick {0}% more often.',
   'Катализатор': 'Catalyst',
-  'Реакции стихий сильнее на {v}%.': 'Elemental reactions are {v}% stronger.',
+  'Реакции стихий сильнее на {0}%.': 'Elemental reactions are {0}% stronger.',
   'Резонанс': 'Resonance',
-  'Каждая реакция срезает {v} десятых секунды с откатов.':
-    'Every reaction shaves {v} tenths of a second off your cooldowns.',
+  'Каждая реакция срезает {0} десятых секунды с откатов.':
+    'Every reaction shaves {0} tenths of a second off your cooldowns.',
 
   // ───────────────────────────────── легендарки и комплекты (uniques.js)
   'Громобой': 'Thunderstrike',

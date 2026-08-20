@@ -35,6 +35,7 @@
 
 // Комната может стоять не там, где страница: адрес решает `server-url`.
 import { apiUrl } from './server-url.js';
+import { getLang } from './i18n.js';
 
 const KEY = 'veloria.wallet.v1';
 const TTL_MS = 7 * 24 * 3600 * 1000;     // неделя, дальше просим войти заново
@@ -99,7 +100,9 @@ async function askChallenge(address) {
   try {
     const r = await fetch(apiUrl('/auth/nonce'), {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ address }),
+      // Язык — чтобы окно кошелька говорило с игроком на его языке. Текст
+      // строит сервер, он же и переводит.
+      body: JSON.stringify({ address, lang: getLang() }),
     });
     if (!r.ok) return null;
     return await r.json();
@@ -109,6 +112,18 @@ async function askChallenge(address) {
 /** Текст, который увидит игрок в окне кошелька. */
 export function buildMessage(nonce, domain) {
   const d = domain || (typeof location !== 'undefined' ? location.host : 'veloria');
+  const время = new Date().toISOString();
+  if (getLang() === 'en') {
+    return [
+      `${d} asks you to confirm signing in to Veloria.`,
+      '',
+      'This signature is for signing in to the game.',
+      'It does NOT move funds and grants no access to your wallet.',
+      '',
+      `One-time code: ${nonce}`,
+      `Time: ${время}`,
+    ].join('\n');
+  }
   return [
     `${d} просит подтвердить вход в Veloria.`,
     '',
@@ -116,7 +131,7 @@ export function buildMessage(nonce, domain) {
     'Она НЕ переводит средства и не даёт доступа к кошельку.',
     '',
     `Одноразовый код: ${nonce}`,
-    `Время: ${new Date().toISOString()}`,
+    `Время: ${время}`,
   ].join('\n');
 }
 

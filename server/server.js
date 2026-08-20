@@ -562,7 +562,11 @@ async function routeApi(req, res, path) {
     const домен = свойИсточник(req.headers.origin)
       ? new URL(req.headers.origin).host
       : (req.headers.host || 'veloria');
-    const message = buildMessage(nonce, домен, new Date().toISOString());
+    // Язык называет клиент: подпись проверяется над присланными байтами, и
+    // сверяется лишь то, что одноразовый код в них наш. Принимаем только два
+    // известных — чужая строка сюда не попадёт.
+    const язык = b && b.lang === 'en' ? 'en' : 'ru';
+    const message = buildMessage(nonce, домен, new Date().toISOString(), язык);
     json(res, 200, { nonce, message });
     return true;
   }

@@ -133,22 +133,38 @@ for (const p of PREFIX) for (const f of p.n) PREFIX_CANON[f] = p.n[0];
 
 export function parseItemName(s, tr) {
   let rest = s, pre = null, suf = null;
+  // Заточка дописывает к имени « +N», а на пятой ступени ещё и «Закалённый».
+  // Разбор этого не знал, окончание переставало совпадать — и заточенная вещь
+  // оставалась русской навсегда. А точат её все.
+  let ступень = '';
+  const хвост = rest.match(/\s\+\d+$/);
+  if (хвост) { ступень = хвост[0]; rest = rest.slice(0, -хвост[0].length); }
+  let закал = null;
+  for (const f of TEMPER_FORMS) {
+    if (rest.startsWith(f + ' ')) { закал = f; rest = rest.slice(f.length + 1); break; }
+  }
+  // Регистр не в счёт: под «Закалённым» аффикс уходит в нижний — «Закалённый
+  // звёздный клинок», — и точное сравнение переставало срабатывать. Основу
+  // ниже ищут так же, без учёта регистра, и по той же причине.
+  const низ = rest.toLowerCase();
   for (const f of PREFIX_FORMS) {
-    if (rest.startsWith(f + ' ')) { pre = f; rest = rest.slice(f.length + 1); break; }
+    if (низ.startsWith(f.toLowerCase() + ' ')) { pre = f; rest = rest.slice(f.length + 1); break; }
   }
   for (const f of SUFFIX_FORMS) {
     if (rest.endsWith(' ' + f)) { suf = f; rest = rest.slice(0, -f.length - 1); break; }
   }
-  if (!pre && !suf) return null;
+  if (!pre && !suf && !закал) return null;
   // с приставкой основа стоит в нижнем регистре — ищем без учёта регистра
   const low = rest.toLowerCase();
   const base = BASE_SORTED.find((b) => b.toLowerCase() === low);
   if (!base) return null;
   const parts = [];
+  if (закал) parts.push(tr(закал));
   if (pre) parts.push(tr(PREFIX_CANON[pre] || pre));
   parts.push(tr(base));
   if (suf) parts.push(tr(suf));
-  return parts.join(' ');
+  // Ступень приклеиваем обратно как есть: это число, переводить нечего.
+  return parts.join(' ') + ступень;
 }
 
 addResolver((s, tr) => parseItemName(s, tr));
@@ -394,11 +410,20 @@ export function addRandomAffix(item, rng) {
   return id;
 }
 
+/**
+ * Приставка «Закалённый» во всех родах.
+ *
+ * Список общий со сборкой имени нарочно: разбору имени он нужен ровно тот же, а
+ * вторая копия однажды разойдётся — и заточенная вещь снова перестанет
+ * переводиться.
+ */
+export const TEMPER_FORMS = ['Закалённый', 'Закалённая', 'Закалённое', 'Закалённые'];
+
 /** Приставка «Закалённый» в правильном роде. */
 export function temperName(item) {
   const key = item.kind === 'weapon' || item.kind === 'trinket' ? item.sub : item.kind;
   const g = genderOf(key, item.tier || 0);
-  return ['Закалённый', 'Закалённая', 'Закалённое', 'Закалённые'][GIDX[g] ?? 0];
+  return TEMPER_FORMS[GIDX[g] ?? 0];
 }
 
 /** Случайное уникальное свойство под тип предмета (веха +7). */
