@@ -301,10 +301,67 @@ class Room {
       case 'reforge': r = m.reforge(e, msg.id); break;
       case 'sharpen': r = m.sharpen(e, msg.fuel); break;
       case 'fuse':    r = m.fuse(e, msg.ids); break;
+      // Очки развития и зелья: то же намерение, что у торговли, и решает его
+      // так же комната. Раньше их считал клиент — а стат и здоровье в общем
+      // мире её. Игрок жал «+», видел рост и через миг получал всё обратно;
+      // выпитое зелье возвращалось на пояс с ближайшим рюкзаком.
       default: return;
     }
     if (r && r.ok) { this.world.dirty = true; p.bagDirty = true; }
     this.sendTo(p, { t: 'деньги', act: msg.t, ...r });
+  }
+
+  /** Очки и зелья: своё, а не торговля — и потому в любом месте мира. */
+  своё(p, msg) {
+    const e = p && p.ent;
+    if (!e) return;
+    const r = msg.t === 'stat' ? this.вложить(e, msg.k) : this.выпить(e, msg.id);
+    if (r && r.ok) { this.world.dirty = true; p.bagDirty = true; }
+    this.sendTo(p, { t: 'деньги', act: msg.t, ...r });
+  }
+
+  /**
+   * Вложить очко развития.
+   *
+   * Правило берём у самого героя — `spendStat` тот же, которым считает
+   * одиночная игра, со своими проверками на остаток очков и на имя стата.
+   * Комната добавляет только то, что и везде: она это делает, а не клиент.
+   */
+  вложить(e, k) {
+    if (!e || typeof e.spendStat !== 'function') return { ok: false, why: 'некому вкладывать' };
+    // Имя свойства проверяем раньше остатка очков. Так отказы различаются:
+    // «нет такого свойства» — ошибка клиента, «очков нет» — состояние игры, и
+    // путать их не надо ни игроку, ни стенду.
+    if (!['str', 'vit', 'agi', 'int'].includes(String(k || ''))) {
+      return { ok: false, why: 'нет такого свойства' };
+    }
+    if (!e.spendStat(String(k))) return { ok: false, why: 'очков развития нет' };
+    return { ok: true, what: 'вложено', k: String(k), pts: e.statPoints };
+  }
+
+  /**
+   * Выпить зелье.
+   *
+   * Здоровье и рюкзак в общем мире ведёт комната, значит и пьёт она. Состав
+   * действия — тот же, что у клиента: лечит, восполняет силу или вешает
+   * усиление, и снимает одну штуку.
+   */
+  выпить(e, id) {
+    if (!e) return { ok: false, why: 'некому пить' };
+    const it = (e.inventory || []).find((x) => x && x.id === id);
+    if (!it) return { ok: false, why: 'этого у тебя нет' };
+    if (!it.heal && !it.mana && !it.buff) return { ok: false, why: 'это не выпить' };
+    // Запрет этажа — тоже правило мира, и знает его мир, а не клиент.
+    const мод = this.world.zone && this.world.zone.mod;
+    if (мод && мод.noPotions) return { ok: false, why: 'на этом этаже зелья мертвы' };
+    if (it.heal && e.hp >= e.maxHp) return { ok: false, why: 'здоровье полное' };
+    if (it.mana && !it.heal && e.mp >= e.maxMp) return { ok: false, why: 'сила полная' };
+
+    if (it.heal) e.heal(it.heal);
+    if (it.mana) e.restoreMp(it.mana);
+    if (it.buff) e.buffs[it.buff] = it.dur;
+    e.removeItem(it, 1);
+    return { ok: true, what: 'выпито', name: it.name, heal: it.heal || 0, mana: it.mana || 0, buff: it.buff || null };
   }
 
   /**
@@ -878,6 +935,10 @@ attachWebSocket(http, (conn, req) => {
     // «нет» с причиной — и, если да, сама меняет золото и рюкзак.
     if (msg.t === 'quest') { мояКомната.заданиe(player, msg); return; }
     if (msg.t === 'say') { мояКомната.сказать(player, msg.text); return; }
+    // Очки и зелья — не торговля, и городом их ограничивать нельзя: зелье пьют
+    // именно там, где бьют. Первая версия провела их через `торг`, и комната
+    // ответила в лесу «здесь нет ни лавки, ни кузни» — нашёл стенд.
+    if (msg.t === 'stat' || msg.t === 'potion') { мояКомната.своё(player, msg); return; }
     if (msg.t === 'shop' || msg.t === 'buy' || msg.t === 'sell' || msg.t === 'craft'
         || msg.t === 'salvage' || msg.t === 'reforge' || msg.t === 'sharpen' || msg.t === 'fuse') {
       мояКомната.торг(player, msg);

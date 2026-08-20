@@ -716,7 +716,7 @@ export class Menus {
       if (p.statPoints > 0) {
         const bx2 = col1 + 172, by2 = y + 1;
         button(g, bx2, by2, 16, 16, '+', { hot: hit(this.mx, this.my, bx2, by2, 16, 16) });
-        this.add(bx2, by2, 16, 16, () => { p.spendStat(k); this.game.toast(`${name} +1`, col); });
+        this.add(bx2, by2, 16, 16, () => { this.game.вложитьОчко(k); this.game.toast(`${name} +1`, col); });
       }
       y += 25;
     }
