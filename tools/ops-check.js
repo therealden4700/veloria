@@ -117,7 +117,12 @@ if (!живой) {
   const порт2 = PORT + 771;
   const дитя = spawn(process.execPath, ['server/server.js'], {
     cwd: КОРЕНЬ, stdio: 'ignore',
-    env: { ...process.env, PORT: String(порт2), STALL_MS: '1', VELORIA_DB: (process.env.VELORIA_DB || '') + '.stall' },
+    env: { ...process.env, PORT: String(порт2), STALL_MS: '1', // Базу второго сервера кладём во временный каталог, а не рядом с игрой.
+      // Первая версия дописывала «.stall» к пути из окружения — а без него путь
+      // пустой, и в корне репозитория заводились `.stall`, `.stall-shm`,
+      // `.stall-wal`. Они и уехали в коммит: то самое, от чего пятью строками
+      // выше закрывается `.dockerignore`.
+      VELORIA_DB: (await import('node:path')).join((await import('node:os')).tmpdir(), 'veloria-stall.db') },
   });
   await wait(3500);
   let код = 0, тело = null;
